@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -31,5 +33,8 @@ func TestSearchSelectionAndDirectDownloadAgainstServer(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Cyberpunk") {
 		t.Fatal(out.String())
+	}
+	if _, err := os.Stat(filepath.Join(a.Config.DownloadDir, "Cyberpunk.zip")); err != nil {
+		t.Fatalf("name-based download missing: %v", err)
 	}
 }

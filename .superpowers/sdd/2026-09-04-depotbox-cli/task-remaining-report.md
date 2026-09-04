@@ -4,7 +4,7 @@ Date: 2026-09-04 (Australia/Sydney)
 
 ## Scope
 
-Implemented Tasks 2 through 7 from the approved Depotbox CLI plan. Task 1 remains in its existing commit.
+Implemented the approved plan and fixed all HIGH and MEDIUM findings from the final review.
 
 ## Files changed
 
@@ -16,27 +16,27 @@ Implemented Tasks 2 through 7 from the approved Depotbox CLI plan. Task 1 remain
 - `internal/app/app.go` and tests: API/download service wiring and configured download directory.
 - `internal/integration/cli_test.go`: in-process HTTP workflow coverage.
 - `README.md`: setup, commands, rate limits, storage, and security notes.
+- Constructors for `config`, `api`, and `download` are now available for downstream callers.
+- No-argument mode now runs a real menu loop. Setup reads one line at a time, masks TTY API-key input, and supports non-terminal readers.
+- Menu search exposes DLC, availability, and protection filters. Menu fix search exposes tags.
+- Selected game downloads use sanitized game names. API failures omit response bodies and redact keys. Requests have a 30-second timeout.
+- No-overwrite downloads use an atomic hard-link commit, so a collision cannot replace an existing file.
 
 ## Verification
 
 Commands run from the worktree:
 
 ```text
-go test ./internal/config                         PASS
-go test ./internal/api ./internal/ratelimit       PASS after implementation
-go test ./internal/download                        PASS after implementation
-go test ./internal/app ./internal/cli              PASS after implementation
-go test ./...                                      PASS
+gofmt -w .                                         PASS
+go test ./...                                      PASS (all packages)
 go vet ./...                                       PASS
 go build -o dbox ./cmd/dbox                        PASS
 git diff --check                                   PASS
-gofmt -w .                                         PASS
 ```
 
 The test suite uses only `httptest` servers, temporary directories, and placeholder test keys. No real API key is included or logged.
 
-## Concerns
+## Results
 
-- The API response schema is represented by the fields required by the plan. If Depotbox adds fields or changes response envelopes, the client types may need extension.
-- Terminal-specific hidden input is not implemented with platform-specific echo control because the project is standard-library-only; setup output never echoes the supplied key.
-- The CLI menu currently prints its five entries and direct workflows are fully wired; a future iteration could add a persistent interactive loop around those same handlers.
+- Tests cover menu looping, setup fallback and secret-safe output, config view without input reads, filters, fix tags, selected-game names, timeout configuration, API error redaction, and collision preservation.
+- No real API key was added, printed, or logged.

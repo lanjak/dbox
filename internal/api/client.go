@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/rufi/dbox/internal/ratelimit"
 )
@@ -18,6 +19,18 @@ type Client struct {
 	HTTPClient      *http.Client
 	Limiter         *ratelimit.Limiter
 }
+
+const RequestTimeout = 30 * time.Second
+
+func New(baseURL, apiKey string, h *http.Client) *Client {
+	if h == nil {
+		h = &http.Client{Timeout: RequestTimeout}
+	} else if h.Timeout == 0 {
+		h.Timeout = RequestTimeout
+	}
+	return &Client{BaseURL: baseURL, APIKey: apiKey, HTTPClient: h}
+}
+
 type SearchRequest struct {
 	SearchTerm         string `json:"searchTerm"`
 	Limit              int    `json:"limit,omitempty"`
@@ -96,7 +109,7 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 	}
 	h := c.HTTPClient
 	if h == nil {
-		h = &http.Client{}
+		h = &http.Client{Timeout: RequestTimeout}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, body)
 	if err != nil {
@@ -106,14 +119,16 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	requestCtx, cancel := context.WithTimeout(req.Context(), RequestTimeout)
+	defer cancel()
+	req = req.WithContext(requestCtx)
 	resp, err := h.Do(req)
 	if err != nil {
-		return err
+		return redactError(err, c.APIKey)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("API request failed (%s): %s", resp.Status, strings.TrimSpace(string(b)))
+		return fmt.Errorf("API request failed (%s)", redact(resp.Status, c.APIKey))
 	}
 	if out == nil {
 		return nil
@@ -122,5 +137,22 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 		_, err = io.Copy(w, resp.Body)
 		return err
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return redactError(err, c.APIKey)
+	}
+	return nil
+}
+
+func redactError(err error, secret string) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s", redact(err.Error(), secret))
+}
+
+func redact(value, secret string) string {
+	if secret == "" {
+		return value
+	}
+	return strings.ReplaceAll(value, secret, "[redacted]")
 }

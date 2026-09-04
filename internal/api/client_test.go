@@ -66,12 +66,19 @@ func TestFixesEncodesQueryAndDownloadUsesExactHeader(t *testing.T) {
 }
 
 func TestNonSuccessErrorDoesNotExposeAPIKey(t *testing.T) {
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "bad", 401) }))
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "secret response body", 401) }))
 	defer s.Close()
 	key := "secret-key"
 	c := &Client{BaseURL: s.URL, APIKey: key, HTTPClient: s.Client()}
 	_, err := c.Search(context.Background(), SearchRequest{SearchTerm: "x"})
-	if err == nil || strings.Contains(err.Error(), key) {
+	if err == nil || strings.Contains(err.Error(), key) || strings.Contains(err.Error(), "secret response body") {
 		t.Fatalf("bad error: %v", err)
+	}
+}
+
+func TestNewClientHasBoundedTimeout(t *testing.T) {
+	c := New("http://example.com", "test-key", nil)
+	if c.HTTPClient == nil || c.HTTPClient.Timeout <= 0 {
+		t.Fatal("expected bounded HTTP timeout")
 	}
 }

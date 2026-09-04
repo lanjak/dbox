@@ -25,6 +25,21 @@ func TestSaveStreamDoesNotOverwriteExistingFile(t *testing.T) {
 	}
 }
 
+func TestSaveStreamCollisionDoesNotReplaceFile(t *testing.T) {
+	d := t.TempDir()
+	p := filepath.Join(d, "game.zip")
+	if err := os.WriteFile(p, []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveStream(d, "game.zip", strings.NewReader("new"), false); err == nil {
+		t.Fatal("expected collision")
+	}
+	b, err := os.ReadFile(p)
+	if err != nil || string(b) != "old" {
+		t.Fatalf("existing file changed: %q, %v", b, err)
+	}
+}
+
 type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) { return 0, errors.New("broken") }

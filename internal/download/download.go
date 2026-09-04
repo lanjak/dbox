@@ -8,6 +8,14 @@ import (
 	"strings"
 )
 
+type Downloader struct{}
+
+func New() *Downloader { return &Downloader{} }
+
+func (d *Downloader) SaveStream(dir, filename string, src io.Reader, overwrite bool) (string, error) {
+	return SaveStream(dir, filename, src, overwrite)
+}
+
 func SanitizeFilename(name string) string {
 	name = filepath.Base(name)
 	var b strings.Builder
@@ -51,13 +59,20 @@ func SaveStream(dir, filename string, src io.Reader, overwrite bool) (string, er
 	if err = tmp.Close(); err != nil {
 		return "", err
 	}
-	if !overwrite {
-		if _, err = os.Stat(final); err == nil {
-			return "", fmt.Errorf("file already exists: %s", filename)
+	if overwrite {
+		if err = os.Rename(tmpname, final); err != nil {
+			return "", err
 		}
-	}
-	if err = os.Rename(tmpname, final); err != nil {
-		return "", err
+	} else {
+		if err = os.Link(tmpname, final); err != nil {
+			if os.IsExist(err) {
+				return "", fmt.Errorf("file already exists: %s", filename)
+			}
+			return "", err
+		}
+		if err = os.Remove(tmpname); err != nil {
+			return "", err
+		}
 	}
 	return final, nil
 }

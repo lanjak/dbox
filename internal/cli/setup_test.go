@@ -2,6 +2,8 @@ package cli
 
 import (
 	"github.com/rufi/dbox/internal/config"
+	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -20,6 +22,13 @@ func TestSetupSavesPrivateConfigurationWithoutPrintingKey(t *testing.T) {
 		t.Fatal("setup printed API key")
 	}
 	if _, err := config.Load(p); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetupReadsLinesWithoutWaitingForTrailingInput(t *testing.T) {
+	d := t.TempDir()
+	if _, err := Setup(strings.NewReader("test-key\n"+d+"\nstarter\n"), io.Discard, filepath.Join(d, "config.json")); err != nil {
 		t.Fatal(err)
 	}
 }

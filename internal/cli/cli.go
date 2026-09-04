@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -20,6 +22,12 @@ type Service interface {
 	DownloadGame(context.Context, string) (string, error)
 	DownloadFix(context.Context, api.Fix) (string, error)
 }
+type filteredSearcher interface {
+	SearchWithFilters(context.Context, api.SearchRequest) (api.SearchResponse, error)
+}
+type namedDownloader interface {
+	DownloadGameNamed(context.Context, string, string) (string, error)
+}
 
 func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	p, err := config.DefaultPath()
@@ -28,138 +36,297 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	}
 	c, err := config.Load(p)
 	if err != nil {
-		all := strings.Split(readAll(in), "\n")
-		if len(all) < 3 {
-			return errors.New("configuration is not set up")
-		}
-		c, err = Setup(strings.NewReader(strings.Join(all[:3], "\n")), out, p)
+		c, err = Setup(in, out, p)
 		if err != nil {
 			return err
 		}
-		in = strings.NewReader(strings.Join(all[3:], "\n"))
 	}
 	return RunWithService(args, in, out, errOut, app.New(c, nil), c)
 }
 
 func Setup(in io.Reader, out io.Writer, path string) (config.Config, error) {
-	lines := strings.Split(strings.TrimSpace(readAll(in)), "\n")
-	if len(lines) < 3 {
+	fmt.Fprintln(out, "Depotbox setup")
+	key, err := readAPIKey(in, out)
+	if err != nil {
 		return config.Config{}, errors.New("setup requires API key, download directory, and plan")
 	}
-	c := config.Config{APIKey: strings.TrimSpace(lines[0]), DownloadDir: strings.TrimSpace(lines[1]), Plan: config.Plan(strings.TrimSpace(lines[2]))}
-	fmt.Fprintln(out, "Depotbox setup")
-	fmt.Fprintln(out, "API key configured")
+	dir, err := readLineFrom(in, out, "Download directory: ")
+	if err != nil {
+		return config.Config{}, errors.New("setup requires API key, download directory, and plan")
+	}
+	plan, err := readLineFrom(in, out, "Plan (starter/pro): ")
+	if err != nil {
+		return config.Config{}, errors.New("setup requires API key, download directory, and plan")
+	}
+	c := config.Config{APIKey: strings.TrimSpace(key), DownloadDir: strings.TrimSpace(dir), Plan: config.Plan(strings.TrimSpace(plan))}
 	if err := c.Validate(); err != nil {
 		return config.Config{}, err
 	}
 	if err := os.MkdirAll(c.DownloadDir, 0700); err != nil {
 		return config.Config{}, err
 	}
+	fmt.Fprintln(out, "API key configured")
 	return c, config.Save(path, c)
 }
-func readAll(in io.Reader) string { b, _ := io.ReadAll(in); return string(b) }
+
+func readAPIKey(input io.Reader, out io.Writer) (string, error) {
+	fmt.Fprint(out, "API key: ")
+	if f, ok := input.(*os.File); ok && isTerminal(f) {
+		_ = exec.Command("stty", "-echo").Run()
+		defer func() { _ = exec.Command("stty", "echo").Run(); fmt.Fprintln(out) }()
+	}
+	return readLineFrom(input, out, "")
+}
+func isTerminal(f *os.File) bool {
+	i, err := f.Stat()
+	return err == nil && i.Mode()&os.ModeCharDevice != 0
+}
+func readLine(r *bufio.Reader, out io.Writer, prompt string) (string, error) {
+	if prompt != "" {
+		fmt.Fprint(out, prompt)
+	}
+	s, err := r.ReadString('\n')
+	return strings.TrimRight(s, "\r\n"), err
+}
+
+func readLineFrom(in io.Reader, out io.Writer, prompt string) (string, error) {
+	if prompt != "" {
+		fmt.Fprint(out, prompt)
+	}
+	return readInputLine(in)
+}
+
 func RunWithService(args []string, in io.Reader, out, errOut io.Writer, s Service, c config.Config) error {
 	ctx := context.Background()
 	if len(args) == 0 {
-		fmt.Fprintln(out, "1. Search games\n2. Download by AppID\n3. Game fixes\n4. Config\n5. Exit")
-		return nil
+		return menu(ctx, in, out, s, c)
 	}
 	switch args[0] {
 	case "search":
 		if len(args) != 2 {
 			return errors.New("usage: dbox search <term>")
 		}
-		r, e := s.Search(ctx, args[1])
-		if e != nil {
-			return e
+		r, err := s.Search(ctx, args[1])
+		if err != nil {
+			return err
 		}
 		return chooseGame(ctx, in, out, s, r)
 	case "download":
 		if len(args) != 2 {
 			return errors.New("usage: dbox download <appid>")
 		}
-		p, e := s.DownloadGame(ctx, args[1])
-		if e == nil {
+		p, err := s.DownloadGame(ctx, args[1])
+		if err == nil {
 			fmt.Fprintln(out, p)
 		}
-		return e
+		return err
 	case "fixes":
-		q := ""
 		if len(args) > 2 {
 			return errors.New("usage: dbox fixes [query]")
 		}
+		q := ""
 		if len(args) == 2 {
 			q = args[1]
 		}
-		r, e := s.Fixes(ctx, q, "")
-		if e != nil {
-			return e
+		r, err := s.Fixes(ctx, q, "")
+		if err != nil {
+			return err
 		}
 		return chooseFix(ctx, in, out, s, r)
 	case "config":
-		fmt.Fprintf(out, "Download directory: %s\nPlan: %s\nAPI key: configured\n", c.DownloadDir, c.Plan)
-		if v := strings.Split(strings.TrimSpace(readAll(in)), "\n"); len(v) >= 2 && v[0] != "" {
-			c.DownloadDir, c.Plan = v[0], config.Plan(v[1])
-			if err := c.Validate(); err != nil {
-				return err
-			}
-			p, err := config.DefaultPath()
-			if err != nil {
-				return err
-			}
-			if err := config.Save(p, c); err != nil {
-				return err
-			}
-			fmt.Fprintln(out, "configuration updated")
+		if len(args) > 2 {
+			return errors.New("usage: dbox config [edit]")
 		}
-		return nil
+		return configCommand(in, out, c, len(args) == 2 && args[1] == "edit")
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 }
+
+func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.Config) error {
+	r := bufio.NewReader(in)
+	for {
+		fmt.Fprintln(out, "1. Search games\n2. Download by AppID\n3. Game fixes\n4. Config\n5. Exit")
+		choice, err := readLine(r, out, "Select an option: ")
+		if err != nil {
+			return nil
+		}
+		switch strings.TrimSpace(choice) {
+		case "1":
+			term, e := readLine(r, out, "Search term: ")
+			if e != nil {
+				return e
+			}
+			req := api.SearchRequest{SearchTerm: strings.TrimSpace(term)}
+			filters, e := readLine(r, out, "Filters (dlc, available, protection=<name>, or blank): ")
+			if e != nil {
+				return e
+			}
+			applySearchFilters(&req, filters)
+			var result api.SearchResponse
+			if fs, ok := s.(filteredSearcher); ok {
+				result, e = fs.SearchWithFilters(ctx, req)
+			} else {
+				result, e = s.Search(ctx, req.SearchTerm)
+			}
+			if e != nil {
+				return e
+			}
+			if e = chooseGame(ctx, r, out, s, result); e != nil {
+				return e
+			}
+		case "2":
+			id, e := readLine(r, out, "AppID: ")
+			if e != nil {
+				return e
+			}
+			p, e := s.DownloadGame(ctx, strings.TrimSpace(id))
+			if e != nil {
+				return e
+			}
+			fmt.Fprintln(out, p)
+		case "3":
+			q, e := readLine(r, out, "Fix search (blank for all): ")
+			if e != nil {
+				return e
+			}
+			tags, e := readLine(r, out, "Fix tags (comma-separated, or blank): ")
+			if e != nil {
+				return e
+			}
+			result, e := s.Fixes(ctx, strings.TrimSpace(q), strings.TrimSpace(tags))
+			if e != nil {
+				return e
+			}
+			if e = chooseFix(ctx, r, out, s, result); e != nil {
+				return e
+			}
+		case "4":
+			if e := configCommand(r, out, c, true); e != nil {
+				return e
+			}
+		case "5":
+			return nil
+		default:
+			fmt.Fprintln(out, "invalid selection")
+		}
+	}
+}
+
+func applySearchFilters(req *api.SearchRequest, text string) {
+	for _, p := range strings.Split(strings.ToLower(strings.TrimSpace(text)), ",") {
+		p = strings.TrimSpace(p)
+		switch {
+		case p == "dlc":
+			req.FilterDLC = true
+		case p == "available":
+			req.FilterAvailability = true
+		case strings.HasPrefix(p, "protection="):
+			req.FilterProtection = strings.TrimSpace(strings.TrimPrefix(p, "protection="))
+		}
+	}
+}
+
+func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) error {
+	fmt.Fprintf(out, "Download directory: %s\nPlan: %s\nAPI key: configured\n", c.DownloadDir, c.Plan)
+	if !edit {
+		return nil
+	}
+	r := bufio.NewReader(in)
+	dir, err := readLine(r, out, "New download directory: ")
+	if err != nil {
+		return nil
+	}
+	plan, err := readLine(r, out, "New plan (starter/pro): ")
+	if err != nil {
+		return err
+	}
+	c.DownloadDir, c.Plan = strings.TrimSpace(dir), config.Plan(strings.TrimSpace(plan))
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(c.DownloadDir, 0700); err != nil {
+		return err
+	}
+	p, err := config.DefaultPath()
+	if err != nil {
+		return err
+	}
+	if err := config.Save(p, c); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "configuration updated")
+	return nil
+}
+
 func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r api.SearchResponse) error {
 	for i, g := range r.Games {
 		fmt.Fprintf(out, "%d. %s (%s)\n", i+1, g.Name, g.AppID)
 	}
-	input, _ := io.ReadAll(in)
-	lines := strings.Split(strings.TrimSpace(string(input)), "\n")
-	i, e := parseSelection(lines, len(r.Games))
-	if e != nil {
-		return e
+	i, err := readSelection(in, len(r.Games))
+	if err != nil {
+		return err
 	}
 	fmt.Fprintf(out, "%s\nDownload? (y/n): ", r.Games[i].Name)
-	if len(lines) < 2 || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(lines[1])), "y") {
+	if !yes(in) {
 		return nil
 	}
-	p, e := s.DownloadGame(ctx, r.Games[i].AppID)
-	if e == nil {
+	var p string
+	if named, ok := s.(namedDownloader); ok {
+		p, err = named.DownloadGameNamed(ctx, r.Games[i].AppID, r.Games[i].Name)
+	} else {
+		p, err = s.DownloadGame(ctx, r.Games[i].AppID)
+	}
+	if err == nil {
 		fmt.Fprintln(out, p)
 	}
-	return e
+	return err
 }
 func chooseFix(ctx context.Context, in io.Reader, out io.Writer, s Service, r api.FixesResponse) error {
 	for i, f := range r.Fixes {
 		fmt.Fprintf(out, "%d. %s (%s)\n", i+1, f.Name, f.File)
 	}
-	input, _ := io.ReadAll(in)
-	lines := strings.Split(strings.TrimSpace(string(input)), "\n")
-	i, e := parseSelection(lines, len(r.Fixes))
-	if e != nil {
-		return e
+	i, err := readSelection(in, len(r.Fixes))
+	if err != nil {
+		return err
 	}
 	fmt.Fprintf(out, "%s\nDownload? (y/n): ", r.Fixes[i].Name)
-	if e == nil && len(lines) >= 2 && strings.HasPrefix(strings.ToLower(strings.TrimSpace(lines[1])), "y") {
-		p, e := s.DownloadFix(ctx, r.Fixes[i])
-		if e == nil {
-			fmt.Fprintln(out, p)
-		}
-		return e
+	if !yes(in) {
+		return nil
 	}
-	return nil
+	p, err := s.DownloadFix(ctx, r.Fixes[i])
+	if err == nil {
+		fmt.Fprintln(out, p)
+	}
+	return err
 }
 func readSelection(in io.Reader, n int) (int, error) {
-	b, _ := io.ReadAll(in)
-	return parseSelection(strings.Split(strings.TrimSpace(string(b)), "\n"), n)
+	line, err := readInputLine(in)
+	if err != nil && line == "" {
+		return 0, errors.New("selection required")
+	}
+	return parseSelection([]string{line}, n)
+}
+
+func readInputLine(in io.Reader) (string, error) {
+	if r, ok := in.(*bufio.Reader); ok {
+		line, err := r.ReadString('\n')
+		return strings.TrimRight(line, "\r\n"), err
+	}
+	var b []byte
+	one := []byte{0}
+	for {
+		n, err := in.Read(one)
+		if n > 0 {
+			if one[0] == '\n' {
+				return strings.TrimRight(string(b), "\r"), nil
+			}
+			b = append(b, one[0])
+		}
+		if err != nil {
+			return string(b), err
+		}
+	}
 }
 func parseSelection(lines []string, n int) (int, error) {
 	if n == 0 {

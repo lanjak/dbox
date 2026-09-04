@@ -17,14 +17,24 @@ type App struct {
 	BaseURL string
 }
 
-func New(cfg config.Config, h *http.Client) *App {
-	a := &App{Config: cfg, BaseURL: "https://depotbox.org"}
-	a.Client = &api.Client{BaseURL: a.BaseURL, APIKey: cfg.APIKey, HTTPClient: h, Limiter: ratelimit.New(cfg.Plan)}
+func NewWithClient(cfg config.Config, baseURL string, h *http.Client) *App {
+	a := &App{Config: cfg, BaseURL: baseURL}
+	a.Client = api.New(baseURL, cfg.APIKey, h)
+	a.Client.Limiter = ratelimit.New(cfg.Plan)
 	return a
+}
+
+func New(cfg config.Config, h *http.Client) *App {
+	return NewWithClient(cfg, "https://depotbox.org", h)
 }
 func (a *App) Search(ctx context.Context, q string) (api.SearchResponse, error) {
 	a.Client.BaseURL = a.BaseURL
 	return a.Client.Search(ctx, api.SearchRequest{SearchTerm: q})
+}
+
+func (a *App) SearchWithFilters(ctx context.Context, req api.SearchRequest) (api.SearchResponse, error) {
+	a.Client.BaseURL = a.BaseURL
+	return a.Client.Search(ctx, req)
 }
 func (a *App) Fixes(ctx context.Context, q, tags string) (api.FixesResponse, error) {
 	a.Client.BaseURL = a.BaseURL
@@ -32,6 +42,10 @@ func (a *App) Fixes(ctx context.Context, q, tags string) (api.FixesResponse, err
 }
 func (a *App) DownloadGame(ctx context.Context, id string) (string, error) {
 	return a.save(ctx, id+".zip", func(w io.Writer) error { return a.Client.DownloadGame(ctx, id, w) })
+}
+
+func (a *App) DownloadGameNamed(ctx context.Context, id, name string) (string, error) {
+	return a.save(ctx, download.SanitizeFilename(name)+".zip", func(w io.Writer) error { return a.Client.DownloadGame(ctx, id, w) })
 }
 func (a *App) DownloadFix(ctx context.Context, f api.Fix) (string, error) {
 	return a.save(ctx, download.SanitizeFilename(f.File), func(w io.Writer) error { return a.Client.DownloadFix(ctx, f.ID, f.File, w) })

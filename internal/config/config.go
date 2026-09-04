@@ -21,6 +21,8 @@ type Config struct {
 	Plan        Plan   `json:"plan"`
 }
 
+func New() Config { return Config{} }
+
 func (c Config) Validate() error {
 	if c.APIKey == "" {
 		return errors.New("API key is required")
