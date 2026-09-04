@@ -107,6 +107,51 @@ func TestFixesDownloadAndDirectAppIDAgainstServer(t *testing.T) {
 	}
 }
 
+func TestDirectDownloadAcceptsMultipleAppIDsSequentially(t *testing.T) {
+	dir := t.TempDir()
+	var downloaded []string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		downloaded = append(downloaded, body["appid"])
+		io.WriteString(w, body["appid"])
+	}))
+	defer s.Close()
+	a := app.NewWithClient(config.Config{APIKey: "test-key", DownloadDir: dir, Plan: config.Starter}, s.URL, s.Client())
+	var out strings.Builder
+	if err := cli.RunWithService([]string{"download", "70", "71", "72"}, strings.NewReader(""), &out, &out, a, a.Config); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(downloaded, ",") != "70,71,72" {
+		t.Fatalf("downloads were not sequential: %v", downloaded)
+	}
+}
+
+func TestSearchSelectionShowsReturnedImageURL(t *testing.T) {
+	a := app.NewWithClient(config.Config{APIKey: "test-key", DownloadDir: t.TempDir(), Plan: config.Starter}, "http://unused", nil)
+	var out strings.Builder
+	service := &searchService{response: api.SearchResponse{Games: []api.Game{{AppID: "70", Name: "Game", HeaderImageURL: "https://example.test/header.jpg"}}}}
+	if err := cli.RunWithService([]string{"search", "game"}, strings.NewReader("1\nn\n"), &out, &out, service, a.Config); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "https://example.test/header.jpg") {
+		t.Fatalf("image URL missing from output: %q", out.String())
+	}
+}
+
+type searchService struct{ response api.SearchResponse }
+
+func (s *searchService) Search(context.Context, string) (api.SearchResponse, error) {
+	return s.response, nil
+}
+func (s *searchService) Fixes(context.Context, string, string) (api.FixesResponse, error) {
+	return api.FixesResponse{}, nil
+}
+func (s *searchService) DownloadGame(context.Context, string) (string, error) { return "", nil }
+func (s *searchService) DownloadFix(context.Context, api.Fix) (string, error) { return "", nil }
+
 func TestMenuConfigChangeUpdatesActiveAppForLaterDownload(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	oldDir, newDir := t.TempDir(), t.TempDir()
@@ -119,7 +164,7 @@ func TestMenuConfigChangeUpdatesActiveAppForLaterDownload(t *testing.T) {
 	}))
 	defer s.Close()
 	a := app.NewWithClient(config.Config{APIKey: "test-key", DownloadDir: oldDir, Plan: config.Starter}, s.URL, s.Client())
-	input := "4\n" + newDir + "\npro\n2\n70\n5\n"
+	input := "5\n" + newDir + "\npro\n2\n70\n6\n"
 	var out strings.Builder
 	if err := cli.RunWithService(nil, strings.NewReader(input), &out, &out, a, a.Config); err != nil {
 		t.Fatal(err)

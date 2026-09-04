@@ -39,10 +39,11 @@ type SearchRequest struct {
 	FilterAvailability bool   `json:"filter_availability,omitempty"`
 }
 type Game struct {
-	AppID       string `json:"appid"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Available   bool   `json:"available,omitempty"`
+	AppID          string `json:"appid"`
+	Name           string `json:"name"`
+	HeaderImageURL string `json:"header_image_url,omitempty"`
+	Description    string `json:"description,omitempty"`
+	Available      bool   `json:"available,omitempty"`
 }
 type SearchResponse struct {
 	Games []Game `json:"games"`

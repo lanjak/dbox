@@ -63,10 +63,10 @@ func TestDirectDownloadDoesNotPrompt(t *testing.T) {
 func TestNoArgumentMenuLoopsUntilExit(t *testing.T) {
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("5\n"), &out, &out, f, config.Config{}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("6\n"), &out, &out, f, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "1. Search games") || !strings.Contains(out.String(), "5. Exit") {
+	if !strings.Contains(out.String(), "1. Search games") || !strings.Contains(out.String(), "6. Exit") {
 		t.Fatalf("menu output: %s", out.String())
 	}
 }
@@ -74,7 +74,7 @@ func TestNoArgumentMenuLoopsUntilExit(t *testing.T) {
 func TestMenuPassesFixTags(t *testing.T) {
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("3\nquery\nonline,offline\n1\nn\n5\n"), &out, &out, f, config.Config{}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("3\nquery\nonline,offline\n1\nn\n6\n"), &out, &out, f, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
 	if f.fixQuery != "query" || f.fixTags != "online,offline" {
@@ -86,7 +86,7 @@ func TestMenuConfirmationLeavesNextCommandForMenu(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("1\nGame\n\n1\nn\n4\n"+t.TempDir()+"\nstarter\n5\n"), &out, &out, f, config.Config{APIKey: "key", DownloadDir: "/tmp", Plan: config.Starter}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("1\nGame\n\n1\nn\n5\n"+t.TempDir()+"\nstarter\n6\n"), &out, &out, f, config.Config{APIKey: "key", DownloadDir: "/tmp", Plan: config.Starter}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "dbox", "config.json")); err != nil {
@@ -97,7 +97,7 @@ func TestMenuConfirmationLeavesNextCommandForMenu(t *testing.T) {
 func TestMenuPassesUserSearchFilters(t *testing.T) {
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("1\nGame\ndlc,available,protection=online\n1\nn\n5\n"), &out, &out, f, config.Config{}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("1\nGame\ndlc,available,protection=online\n1\nn\n6\n"), &out, &out, f, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
 	if !f.searchReq.FilterDLC || !f.searchReq.FilterAvailability || f.searchReq.FilterProtection != "online" {

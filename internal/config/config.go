@@ -83,3 +83,11 @@ func DefaultPath() (string, error) {
 	}
 	return filepath.Join(dir, "dbox", "config.json"), nil
 }
+
+func HistoryPath() (string, error) {
+	p, err := DefaultPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(p), "history.json"), nil
+}

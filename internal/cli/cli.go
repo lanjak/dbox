@@ -6,14 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rufi/dbox/internal/api"
 	"github.com/rufi/dbox/internal/app"
 	"github.com/rufi/dbox/internal/config"
+	"github.com/rufi/dbox/internal/history"
 )
 
 type Service interface {
@@ -30,6 +34,9 @@ type namedDownloader interface {
 }
 type configUpdater interface {
 	UpdateConfig(config.Config)
+}
+type historyLister interface {
+	HistoryEntries() ([]history.Entry, error)
 }
 
 func Run(args []string, in io.Reader, out, errOut io.Writer) error {
@@ -115,14 +122,15 @@ func RunWithService(args []string, in io.Reader, out, errOut io.Writer, s Servic
 		}
 		return chooseGame(ctx, in, out, s, r)
 	case "download":
-		if len(args) != 2 {
-			return errors.New("usage: dbox download <appid>")
+		if len(args) < 2 {
+			return errors.New("usage: dbox download <appid> [appid ...]")
 		}
-		p, err := s.DownloadGame(ctx, args[1])
-		if err == nil {
-			fmt.Fprintln(out, p)
+		return downloadIDs(ctx, args[1:], out, errOut, s)
+	case "history":
+		if len(args) > 2 {
+			return errors.New("usage: dbox history [search-term]")
 		}
-		return err
+		return showHistory(out, s, strings.Join(args[1:], " "))
 	case "fixes":
 		if len(args) > 2 {
 			return errors.New("usage: dbox fixes [query]")
@@ -150,7 +158,7 @@ func RunWithService(args []string, in io.Reader, out, errOut io.Writer, s Servic
 func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.Config) error {
 	r := bufio.NewReader(in)
 	for {
-		fmt.Fprintln(out, "1. Search games\n2. Download by AppID\n3. Game fixes\n4. Config\n5. Exit")
+		fmt.Fprintln(out, "1. Search games\n2. Download by AppID\n3. Game fixes\n4. History\n5. Config\n6. Exit")
 		choice, err := readLine(r, out, "Select an option: ")
 		if err != nil {
 			return nil
@@ -180,15 +188,13 @@ func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.
 				return e
 			}
 		case "2":
-			id, e := readLine(r, out, "AppID: ")
+			ids, e := readLine(r, out, "AppID(s), separated by spaces or commas: ")
 			if e != nil {
 				return e
 			}
-			p, e := s.DownloadGame(ctx, strings.TrimSpace(id))
-			if e != nil {
+			if e = downloadIDs(ctx, splitIDs(ids), out, out, s); e != nil {
 				return e
 			}
-			fmt.Fprintln(out, p)
 		case "3":
 			q, e := readLine(r, out, "Fix search (blank for all): ")
 			if e != nil {
@@ -206,6 +212,10 @@ func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.
 				return e
 			}
 		case "4":
+			if e := showHistory(out, s, ""); e != nil {
+				return e
+			}
+		case "5":
 			updated, e := configCommand(r, out, c, true)
 			if e != nil {
 				return e
@@ -214,7 +224,7 @@ func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.
 			if updater, ok := s.(configUpdater); ok {
 				updater.UpdateConfig(c)
 			}
-		case "5":
+		case "6":
 			return nil
 		default:
 			fmt.Fprintln(out, "invalid selection")
@@ -275,7 +285,9 @@ func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r a
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "%s\nDownload? (y/n): ", r.Games[i].Name)
+	fmt.Fprintf(out, "%s\nImage: %s\n", r.Games[i].Name, r.Games[i].HeaderImageURL)
+	renderImage(out, r.Games[i].HeaderImageURL)
+	fmt.Fprint(out, "Download? (y/n): ")
 	if !yes(in) {
 		return nil
 	}
@@ -289,6 +301,103 @@ func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r a
 		fmt.Fprintln(out, p)
 	}
 	return err
+}
+
+func downloadIDs(ctx context.Context, ids []string, out, errOut io.Writer, s Service) error {
+	if len(ids) == 0 {
+		return errors.New("at least one AppID is required")
+	}
+	var firstErr error
+	for _, id := range ids {
+		p, err := s.DownloadGame(ctx, id)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			fmt.Fprintf(errOut, "%s: %v\n", id, err)
+			continue
+		}
+		fmt.Fprintln(out, p)
+	}
+	return firstErr
+}
+
+func splitIDs(text string) []string {
+	fields := strings.FieldsFunc(text, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	ids := make([]string, 0, len(fields))
+	for _, id := range fields {
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func showHistory(out io.Writer, s Service, query string) error {
+	lister, ok := s.(historyLister)
+	if !ok {
+		fmt.Fprintln(out, "history is unavailable")
+		return nil
+	}
+	entries, err := lister.HistoryEntries()
+	if err != nil {
+		return err
+	}
+	count := 0
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if query != "" && !strings.Contains(strings.ToLower(e.Query+" "+e.Name+" "+e.AppID), strings.ToLower(query)) {
+			continue
+		}
+		fmt.Fprintf(out, "%s  %-13s %-12s %s%s\n", e.At.Local().Format("2006-01-02 15:04"), e.Kind, e.AppID, e.Name, historyPath(e.Path))
+		count++
+	}
+	if count == 0 {
+		fmt.Fprintln(out, "no history entries")
+	}
+	return nil
+}
+
+func historyPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	return " -> " + path
+}
+
+func renderImage(out io.Writer, imageURL string) {
+	if imageURL == "" {
+		return
+	}
+	if _, err := exec.LookPath("chafa"); err != nil {
+		return
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(imageURL)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return
+	}
+	tmp, err := os.CreateTemp("", "dbox-image-*")
+	if err != nil {
+		return
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if _, err = io.Copy(tmp, resp.Body); err != nil {
+		tmp.Close()
+		return
+	}
+	if err = tmp.Close(); err != nil {
+		return
+	}
+	cmd := exec.Command("chafa", "--format=symbols", filepath.Clean(name))
+	if preview, err := cmd.Output(); err == nil {
+		fmt.Fprintln(out, string(preview))
+	}
 }
 func chooseFix(ctx context.Context, in io.Reader, out io.Writer, s Service, r api.FixesResponse) error {
 	for i, f := range r.Fixes {

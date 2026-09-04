@@ -4,10 +4,12 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/rufi/dbox/internal/api"
 	"github.com/rufi/dbox/internal/config"
 	"github.com/rufi/dbox/internal/download"
+	"github.com/rufi/dbox/internal/history"
 	"github.com/rufi/dbox/internal/ratelimit"
 )
 
@@ -15,6 +17,7 @@ type App struct {
 	Config  config.Config
 	Client  *api.Client
 	BaseURL string
+	History *history.Store
 }
 
 func NewWithClient(cfg config.Config, baseURL string, h *http.Client) *App {
@@ -25,7 +28,11 @@ func NewWithClient(cfg config.Config, baseURL string, h *http.Client) *App {
 }
 
 func New(cfg config.Config, h *http.Client) *App {
-	return NewWithClient(cfg, "https://depotbox.org", h)
+	a := NewWithClient(cfg, "https://depotbox.org", h)
+	if path, err := config.HistoryPath(); err == nil {
+		a.History = history.New(path, 100)
+	}
+	return a
 }
 func (a *App) UpdateConfig(cfg config.Config) {
 	a.Config = cfg
@@ -34,26 +41,59 @@ func (a *App) UpdateConfig(cfg config.Config) {
 }
 func (a *App) Search(ctx context.Context, q string) (api.SearchResponse, error) {
 	a.Client.BaseURL = a.BaseURL
-	return a.Client.Search(ctx, api.SearchRequest{SearchTerm: q})
+	r, err := a.Client.Search(ctx, api.SearchRequest{SearchTerm: q})
+	a.record(history.Entry{Kind: "search", Query: q, Status: status(err)})
+	return r, err
 }
 
 func (a *App) SearchWithFilters(ctx context.Context, req api.SearchRequest) (api.SearchResponse, error) {
 	a.Client.BaseURL = a.BaseURL
-	return a.Client.Search(ctx, req)
+	r, err := a.Client.Search(ctx, req)
+	a.record(history.Entry{Kind: "search", Query: req.SearchTerm, Status: status(err)})
+	return r, err
 }
 func (a *App) Fixes(ctx context.Context, q, tags string) (api.FixesResponse, error) {
 	a.Client.BaseURL = a.BaseURL
-	return a.Client.Fixes(ctx, q, tags)
+	r, err := a.Client.Fixes(ctx, q, tags)
+	a.record(history.Entry{Kind: "fix-search", Query: q, Status: status(err)})
+	return r, err
 }
 func (a *App) DownloadGame(ctx context.Context, id string) (string, error) {
-	return a.save(ctx, id+".zip", func(w io.Writer) error { return a.Client.DownloadGame(ctx, id, w) })
+	p, err := a.save(ctx, id+".zip", func(w io.Writer) error { return a.Client.DownloadGame(ctx, id, w) })
+	a.record(history.Entry{Kind: "download", AppID: id, Path: p, Status: status(err)})
+	return p, err
 }
 
 func (a *App) DownloadGameNamed(ctx context.Context, id, name string) (string, error) {
-	return a.save(ctx, download.SanitizeFilename(name)+".zip", func(w io.Writer) error { return a.Client.DownloadGame(ctx, id, w) })
+	p, err := a.save(ctx, download.SanitizeFilename(name)+".zip", func(w io.Writer) error { return a.Client.DownloadGame(ctx, id, w) })
+	a.record(history.Entry{Kind: "download", AppID: id, Name: name, Path: p, Status: status(err)})
+	return p, err
 }
 func (a *App) DownloadFix(ctx context.Context, f api.Fix) (string, error) {
-	return a.save(ctx, download.SanitizeFilename(f.File), func(w io.Writer) error { return a.Client.DownloadFix(ctx, f.ID, f.File, w) })
+	p, err := a.save(ctx, download.SanitizeFilename(f.File), func(w io.Writer) error { return a.Client.DownloadFix(ctx, f.ID, f.File, w) })
+	a.record(history.Entry{Kind: "fix-download", Name: f.Name, Path: p, Status: status(err)})
+	return p, err
+}
+
+func (a *App) HistoryEntries() ([]history.Entry, error) {
+	if a.History == nil {
+		return nil, nil
+	}
+	return a.History.Load()
+}
+
+func (a *App) record(entry history.Entry) {
+	if a.History != nil {
+		entry.At = time.Now().UTC()
+		_ = a.History.Append(entry)
+	}
+}
+
+func status(err error) string {
+	if err == nil {
+		return "success"
+	}
+	return "failed"
 }
 func (a *App) save(ctx context.Context, name string, fn func(io.Writer) error) (string, error) {
 	r, w := io.Pipe()

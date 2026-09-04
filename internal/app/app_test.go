@@ -13,6 +13,7 @@ import (
 )
 
 func TestAppSearchUsesConfiguredAPI(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	called := false
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
@@ -27,6 +28,10 @@ func TestAppSearchUsesConfiguredAPI(t *testing.T) {
 	got, err := a.Search(context.Background(), "Game")
 	if err != nil || len(got.Games) != 1 || !called {
 		t.Fatalf("got %#v err %v", got, err)
+	}
+	entries, err := a.HistoryEntries()
+	if err != nil || len(entries) != 1 || entries[0].Kind != "search" || entries[0].Query != "Game" {
+		t.Fatalf("history %#v err %v", entries, err)
 	}
 }
 
