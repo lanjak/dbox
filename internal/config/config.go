@@ -64,7 +64,7 @@ func Save(path string, c Config) error {
 		return err
 	}
 	b = append(b, '\n')
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	f, err := openConfigFile(path)
 	if err != nil {
 		return err
 	}

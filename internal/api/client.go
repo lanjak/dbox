@@ -111,6 +111,17 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 	if h == nil {
 		h = &http.Client{Timeout: RequestTimeout}
 	}
+	hcopy := *h
+	priorRedirect := h.CheckRedirect
+	hcopy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if !sameOrigin(c.BaseURL, req.URL) {
+			return fmt.Errorf("redirect to different origin %q", req.URL)
+		}
+		if priorRedirect != nil {
+			return priorRedirect(req, via)
+		}
+		return nil
+	}
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, body)
 	if err != nil {
 		return err
@@ -122,7 +133,7 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 	requestCtx, cancel := context.WithTimeout(req.Context(), RequestTimeout)
 	defer cancel()
 	req = req.WithContext(requestCtx)
-	resp, err := h.Do(req)
+	resp, err := hcopy.Do(req)
 	if err != nil {
 		return redactError(err, c.APIKey)
 	}
@@ -141,6 +152,14 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 		return redactError(err, c.APIKey)
 	}
 	return nil
+}
+
+func sameOrigin(base string, destination *url.URL) bool {
+	origin, err := url.Parse(base)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(origin.Scheme, destination.Scheme) && strings.EqualFold(origin.Host, destination.Host)
 }
 
 func redactError(err error, secret string) error {

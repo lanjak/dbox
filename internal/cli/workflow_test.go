@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -77,6 +79,18 @@ func TestMenuPassesFixTags(t *testing.T) {
 	}
 	if f.fixQuery != "query" || f.fixTags != "online,offline" {
 		t.Fatalf("fix filters: query=%q tags=%q", f.fixQuery, f.fixTags)
+	}
+}
+
+func TestMenuConfirmationLeavesNextCommandForMenu(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	f := &fakeService{}
+	var out strings.Builder
+	if err := RunWithService(nil, strings.NewReader("1\nGame\n\n1\nn\n4\n"+t.TempDir()+"\nstarter\n5\n"), &out, &out, f, config.Config{APIKey: "key", DownloadDir: "/tmp", Plan: config.Starter}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "dbox", "config.json")); err != nil {
+		t.Fatalf("menu did not return after confirmation: %s", out.String())
 	}
 }
 

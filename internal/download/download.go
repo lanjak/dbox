@@ -30,7 +30,21 @@ func SanitizeFilename(name string) string {
 	if name == "" || name == "." {
 		return "download.zip"
 	}
+	base, ext := name, ""
+	if i := strings.LastIndexByte(name, '.'); i > 0 {
+		base, ext = name[:i], name[i:]
+	}
+	reserved := strings.ToUpper(strings.TrimRight(base, " ."))
+	if reserved == "CON" || reserved == "PRN" || reserved == "AUX" || reserved == "NUL" ||
+		(strings.HasPrefix(reserved, "COM") && isDeviceNumber(reserved[3:])) ||
+		(strings.HasPrefix(reserved, "LPT") && isDeviceNumber(reserved[3:])) {
+		name = base + "_" + ext
+	}
 	return name
+}
+
+func isDeviceNumber(s string) bool {
+	return len(s) == 1 && s[0] >= '1' && s[0] <= '9'
 }
 
 func SaveStream(dir, filename string, src io.Reader, overwrite bool) (string, error) {

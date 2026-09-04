@@ -5,9 +5,48 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestClientDoesNotSendAPIKeyAcrossRedirectedHost(t *testing.T) {
+	var gotKey string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("X-API-Key")
+		io.WriteString(w, `{"games":[]}`)
+	}))
+	defer other.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		location, _ := url.Parse(other.URL)
+		http.Redirect(w, r, location.String()+"/api/search-games", http.StatusFound)
+	}))
+	defer origin.Close()
+	c := New(origin.URL, "test-key", origin.Client())
+	_, err := c.Search(context.Background(), SearchRequest{SearchTerm: "x"})
+	if err == nil || gotKey != "" {
+		t.Fatalf("redirect followed or key leaked: err=%v key=%q", err, gotKey)
+	}
+}
+
+func TestClientAllowsSameOriginRedirect(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/start" {
+			http.Redirect(w, r, "/api/search-games", http.StatusFound)
+			return
+		}
+		if r.Header.Get("X-API-Key") != "test-key" {
+			t.Errorf("same-origin redirect lost API key")
+		}
+		io.WriteString(w, `{"games":[]}`)
+	}))
+	defer s.Close()
+	c := New(s.URL, "test-key", s.Client())
+	var got SearchResponse
+	if err := c.request(context.Background(), http.MethodGet, "/start", nil, &got); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestSearchSendsAuthenticatedJSONAndDecodesResponse(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

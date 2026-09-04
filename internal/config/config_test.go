@@ -6,6 +6,29 @@ import (
 	"testing"
 )
 
+func TestSaveRejectsExistingSymlinkOnUnix(t *testing.T) {
+	if os.PathSeparator != '/' {
+		t.Skip("Unix symlink protection")
+	}
+	d := t.TempDir()
+	target := filepath.Join(d, "target.json")
+	path := filepath.Join(d, "config.json")
+	if err := os.WriteFile(target, []byte("original\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	c := Config{APIKey: "key", DownloadDir: d, Plan: Starter}
+	if err := Save(path, c); err == nil {
+		t.Fatal("expected symlink save to fail")
+	}
+	b, err := os.ReadFile(target)
+	if err != nil || string(b) != "original\n" {
+		t.Fatalf("symlink target changed: %q, %v", b, err)
+	}
+}
+
 func TestValidateRejectsUnsupportedPlan(t *testing.T) {
 	c := Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: Plan("enterprise")}
 	if err := c.Validate(); err == nil {

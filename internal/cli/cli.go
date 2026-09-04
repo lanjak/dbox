@@ -28,6 +28,9 @@ type filteredSearcher interface {
 type namedDownloader interface {
 	DownloadGameNamed(context.Context, string, string) (string, error)
 }
+type configUpdater interface {
+	UpdateConfig(config.Config)
+}
 
 func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	p, err := config.DefaultPath()
@@ -137,7 +140,8 @@ func RunWithService(args []string, in io.Reader, out, errOut io.Writer, s Servic
 		if len(args) > 2 {
 			return errors.New("usage: dbox config [edit]")
 		}
-		return configCommand(in, out, c, len(args) == 2 && args[1] == "edit")
+		_, err := configCommand(in, out, c, len(args) == 2 && args[1] == "edit")
+		return err
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -202,8 +206,13 @@ func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.
 				return e
 			}
 		case "4":
-			if e := configCommand(r, out, c, true); e != nil {
+			updated, e := configCommand(r, out, c, true)
+			if e != nil {
 				return e
+			}
+			c = updated
+			if updater, ok := s.(configUpdater); ok {
+				updater.UpdateConfig(c)
 			}
 		case "5":
 			return nil
@@ -227,36 +236,35 @@ func applySearchFilters(req *api.SearchRequest, text string) {
 	}
 }
 
-func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) error {
+func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) (config.Config, error) {
 	fmt.Fprintf(out, "Download directory: %s\nPlan: %s\nAPI key: configured\n", c.DownloadDir, c.Plan)
 	if !edit {
-		return nil
+		return c, nil
 	}
-	r := bufio.NewReader(in)
-	dir, err := readLine(r, out, "New download directory: ")
+	dir, err := readLineFrom(in, out, "New download directory: ")
 	if err != nil {
-		return nil
+		return c, err
 	}
-	plan, err := readLine(r, out, "New plan (starter/pro): ")
+	plan, err := readLineFrom(in, out, "New plan (starter/pro): ")
 	if err != nil {
-		return err
+		return c, err
 	}
 	c.DownloadDir, c.Plan = strings.TrimSpace(dir), config.Plan(strings.TrimSpace(plan))
 	if err := c.Validate(); err != nil {
-		return err
+		return c, err
 	}
 	if err := os.MkdirAll(c.DownloadDir, 0700); err != nil {
-		return err
+		return c, err
 	}
 	p, err := config.DefaultPath()
 	if err != nil {
-		return err
+		return c, err
 	}
 	if err := config.Save(p, c); err != nil {
-		return err
+		return c, err
 	}
 	fmt.Fprintln(out, "configuration updated")
-	return nil
+	return c, nil
 }
 
 func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r api.SearchResponse) error {
@@ -342,6 +350,6 @@ func parseSelection(lines []string, n int) (int, error) {
 	return i - 1, nil
 }
 func yes(in io.Reader) bool {
-	b, _ := io.ReadAll(in)
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(string(b))), "y")
+	line, _ := readInputLine(in)
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
 }

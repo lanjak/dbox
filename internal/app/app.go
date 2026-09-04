@@ -27,6 +27,11 @@ func NewWithClient(cfg config.Config, baseURL string, h *http.Client) *App {
 func New(cfg config.Config, h *http.Client) *App {
 	return NewWithClient(cfg, "https://depotbox.org", h)
 }
+func (a *App) UpdateConfig(cfg config.Config) {
+	a.Config = cfg
+	a.Client.APIKey = cfg.APIKey
+	a.Client.Limiter = ratelimit.New(cfg.Plan)
+}
 func (a *App) Search(ctx context.Context, q string) (api.SearchResponse, error) {
 	a.Client.BaseURL = a.BaseURL
 	return a.Client.Search(ctx, api.SearchRequest{SearchTerm: q})

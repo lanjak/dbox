@@ -14,6 +14,15 @@ func TestSanitizeFilenameRemovesTraversalAndInvalidCharacters(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestSanitizeFilenameRewritesWindowsReservedNames(t *testing.T) {
+	for _, name := range []string{"CON", "NUL.txt", "com1.zip", "LPT9."} {
+		got := SanitizeFilename(name)
+		if strings.EqualFold(strings.TrimSuffix(got, filepath.Ext(got)), strings.TrimSuffix(name, filepath.Ext(name))) {
+			t.Fatalf("reserved name %q was not rewritten: %q", name, got)
+		}
+	}
+}
 func TestSaveStreamDoesNotOverwriteExistingFile(t *testing.T) {
 	d := t.TempDir()
 	p := filepath.Join(d, "game.zip")
