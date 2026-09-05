@@ -36,6 +36,13 @@ func TestValidateRejectsUnsupportedPlan(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnsupportedHandoffTarget(t *testing.T) {
+	c := Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: Starter, HandoffTarget: HandoffTarget("other")}
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected unsupported handoff target error")
+	}
+}
+
 func TestValidateRejectsEmptyKeyAndDirectory(t *testing.T) {
 	for _, c := range []Config{{DownloadDir: t.TempDir(), Plan: Starter}, {APIKey: "key", Plan: Starter}} {
 		if err := c.Validate(); err == nil {
@@ -46,7 +53,7 @@ func TestValidateRejectsEmptyKeyAndDirectory(t *testing.T) {
 
 func TestSaveLoadRoundTripCreatesParentAndPrivateFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "config.json")
-	want := Config{APIKey: "test-key", DownloadDir: t.TempDir(), Plan: Pro}
+	want := Config{APIKey: "test-key", DownloadDir: t.TempDir(), Plan: Pro, HandoffTarget: HandoffAccela, HandoffLibrary: "/media/DATA/SteamLibrary", HandoffCommand: "/usr/bin/accela"}
 	if err := Save(path, want); err != nil {
 		t.Fatal(err)
 	}

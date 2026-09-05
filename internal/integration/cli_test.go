@@ -164,7 +164,7 @@ func TestMenuConfigChangeUpdatesActiveAppForLaterDownload(t *testing.T) {
 	}))
 	defer s.Close()
 	a := app.NewWithClient(config.Config{APIKey: "test-key", DownloadDir: oldDir, Plan: config.Starter}, s.URL, s.Client())
-	input := "5\n" + newDir + "\npro\n2\n70\n6\n"
+	input := "5\n" + newDir + "\npro\noff\n\n\n2\n70\n6\n"
 	var out strings.Builder
 	if err := cli.RunWithService(nil, strings.NewReader(input), &out, &out, a, a.Config); err != nil {
 		t.Fatal(err)

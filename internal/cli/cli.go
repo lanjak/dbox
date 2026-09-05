@@ -38,6 +38,9 @@ type configUpdater interface {
 type historyLister interface {
 	HistoryEntries() ([]history.Entry, error)
 }
+type handoffService interface {
+	Handoff(string) error
+}
 
 func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	p, err := config.DefaultPath()
@@ -68,7 +71,7 @@ func Setup(in io.Reader, out io.Writer, path string) (config.Config, error) {
 	if err != nil {
 		return config.Config{}, errors.New("setup requires API key, download directory, and plan")
 	}
-	c := config.Config{APIKey: strings.TrimSpace(key), DownloadDir: strings.TrimSpace(dir), Plan: config.Plan(strings.TrimSpace(plan))}
+	c := config.Config{APIKey: strings.TrimSpace(key), DownloadDir: strings.TrimSpace(dir), Plan: config.Plan(strings.TrimSpace(plan)), HandoffTarget: config.HandoffNone}
 	if err := c.Validate(); err != nil {
 		return config.Config{}, err
 	}
@@ -247,7 +250,19 @@ func applySearchFilters(req *api.SearchRequest, text string) {
 }
 
 func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) (config.Config, error) {
-	fmt.Fprintf(out, "Download directory: %s\nPlan: %s\nAPI key: configured\n", c.DownloadDir, c.Plan)
+	displayTarget := string(c.HandoffTarget)
+	if displayTarget == "" {
+		displayTarget = string(config.HandoffNone)
+	}
+	displayCommand := c.HandoffCommand
+	if displayCommand == "" {
+		displayCommand = "accela"
+	}
+	displayLibrary := c.HandoffLibrary
+	if displayLibrary == "" {
+		displayLibrary = "Accela chooses"
+	}
+	fmt.Fprintf(out, "Download directory: %s\nPlan: %s\nAPI key: configured\nAuto handoff: %s\nHandoff library: %s\nHandoff command: %s\n", c.DownloadDir, c.Plan, displayTarget, displayLibrary, displayCommand)
 	if !edit {
 		return c, nil
 	}
@@ -259,7 +274,24 @@ func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) (con
 	if err != nil {
 		return c, err
 	}
+	target, err := readLineFrom(in, out, "Auto handoff (off/accela): ")
+	if err != nil {
+		return c, err
+	}
+	library, err := readLineFrom(in, out, "Preferred Steam library (blank to let Accela choose): ")
+	if err != nil {
+		return c, err
+	}
+	command, err := readLineFrom(in, out, "Launcher command override (blank for accela): ")
+	if err != nil {
+		return c, err
+	}
 	c.DownloadDir, c.Plan = strings.TrimSpace(dir), config.Plan(strings.TrimSpace(plan))
+	c.HandoffTarget = config.HandoffTarget(strings.TrimSpace(target))
+	if c.HandoffTarget == "" {
+		c.HandoffTarget = config.HandoffNone
+	}
+	c.HandoffLibrary, c.HandoffCommand = strings.TrimSpace(library), strings.TrimSpace(command)
 	if err := c.Validate(); err != nil {
 		return c, err
 	}
@@ -298,6 +330,11 @@ func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r a
 		p, err = s.DownloadGame(ctx, r.Games[i].AppID)
 	}
 	if err == nil {
+		if h, ok := s.(handoffService); ok {
+			if handoffErr := h.Handoff(p); handoffErr != nil {
+				return handoffErr
+			}
+		}
 		fmt.Fprintln(out, p)
 	}
 	return err
@@ -316,6 +353,14 @@ func downloadIDs(ctx context.Context, ids []string, out, errOut io.Writer, s Ser
 			}
 			fmt.Fprintf(errOut, "%s: %v\n", id, err)
 			continue
+		}
+		if h, ok := s.(handoffService); ok {
+			if handoffErr := h.Handoff(p); handoffErr != nil {
+				fmt.Fprintf(errOut, "handoff %s: %v\n", id, handoffErr)
+				if firstErr == nil {
+					firstErr = handoffErr
+				}
+			}
 		}
 		fmt.Fprintln(out, p)
 	}
@@ -413,6 +458,11 @@ func chooseFix(ctx context.Context, in io.Reader, out io.Writer, s Service, r ap
 	}
 	p, err := s.DownloadFix(ctx, r.Fixes[i])
 	if err == nil {
+		if h, ok := s.(handoffService); ok {
+			if handoffErr := h.Handoff(p); handoffErr != nil {
+				return handoffErr
+			}
+		}
 		fmt.Fprintln(out, p)
 	}
 	return err

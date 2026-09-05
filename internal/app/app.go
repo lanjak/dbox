@@ -9,6 +9,7 @@ import (
 	"github.com/rufi/dbox/internal/api"
 	"github.com/rufi/dbox/internal/config"
 	"github.com/rufi/dbox/internal/download"
+	"github.com/rufi/dbox/internal/handoff"
 	"github.com/rufi/dbox/internal/history"
 	"github.com/rufi/dbox/internal/ratelimit"
 )
@@ -80,6 +81,10 @@ func (a *App) HistoryEntries() ([]history.Entry, error) {
 		return nil, nil
 	}
 	return a.History.Load()
+}
+
+func (a *App) Handoff(path string) error {
+	return handoff.Launch(a.Config.HandoffTarget, a.Config.HandoffCommand, path)
 }
 
 func (a *App) record(entry history.Entry) {

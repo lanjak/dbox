@@ -15,6 +15,8 @@ dbox config                  # show non-secret settings
 dbox history [search-term]   # show recent searches and downloads
 ```
 
+`dbox config edit` can enable automatic handoff to the installed `accela` launcher. The launcher receives each completed ZIP as a file argument, which is the same workflow as dropping the ZIP onto ACCELA/ASSella. You can save a preferred Steam library path for your own workflow, or leave it blank so Accela chooses. Use the launcher command override when `accela` is not on PATH.
+
 The interactive menu also accepts multiple AppIDs separated by spaces or commas. Searches, fix searches, and successful or failed downloads are saved in the local `history.json` file beside the config, with the latest 100 entries retained.
 
 Search results show the returned header image URL. If `chafa` is installed, `dbox` also displays a terminal preview; normal terminals still show the URL.

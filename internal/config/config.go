@@ -10,15 +10,22 @@ import (
 
 type Plan string
 
+type HandoffTarget string
+
 const (
-	Starter Plan = "starter"
-	Pro     Plan = "pro"
+	Starter       Plan          = "starter"
+	Pro           Plan          = "pro"
+	HandoffNone   HandoffTarget = "off"
+	HandoffAccela HandoffTarget = "accela"
 )
 
 type Config struct {
-	APIKey      string `json:"api_key"`
-	DownloadDir string `json:"download_dir"`
-	Plan        Plan   `json:"plan"`
+	APIKey         string        `json:"api_key"`
+	DownloadDir    string        `json:"download_dir"`
+	Plan           Plan          `json:"plan"`
+	HandoffTarget  HandoffTarget `json:"handoff_target,omitempty"`
+	HandoffLibrary string        `json:"handoff_library,omitempty"`
+	HandoffCommand string        `json:"handoff_command,omitempty"`
 }
 
 func New() Config { return Config{} }
@@ -32,6 +39,12 @@ func (c Config) Validate() error {
 	}
 	if c.Plan != Starter && c.Plan != Pro {
 		return fmt.Errorf("unsupported plan %q", c.Plan)
+	}
+	if c.HandoffTarget == "" {
+		return nil
+	}
+	if c.HandoffTarget != HandoffNone && c.HandoffTarget != HandoffAccela {
+		return fmt.Errorf("unsupported handoff target %q", c.HandoffTarget)
 	}
 	return nil
 }
