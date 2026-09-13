@@ -39,12 +39,45 @@ type SearchRequest struct {
 	FilterAvailability bool   `json:"filter_availability,omitempty"`
 }
 type Game struct {
-	AppID          string `json:"appid"`
-	Name           string `json:"name"`
-	HeaderImageURL string `json:"header_image_url,omitempty"`
-	Description    string `json:"description,omitempty"`
-	Available      bool   `json:"available,omitempty"`
+	AppID                     string  `json:"appid"`
+	Name                      string  `json:"name"`
+	IsDLC                     bool    `json:"is_dlc,omitempty"`
+	DRMNotice                 *string `json:"drm_notice"`
+	ExternalUserAccountNotice *string `json:"ext_user_account_notice"`
+	HeaderImageURL            string  `json:"header_image_url,omitempty"`
+	Description               string  `json:"description,omitempty"`
+	Available                 bool    `json:"available,omitempty"`
 }
+
+// UnmarshalJSON accepts both the numeric and string AppID forms returned by
+// different versions of the Depotbox API.
+func (g *Game) UnmarshalJSON(data []byte) error {
+	type alias Game
+	var aux struct {
+		AppID json.RawMessage `json:"appid"`
+		*alias
+	}
+	aux.alias = (*alias)(g)
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if len(aux.AppID) == 0 || string(aux.AppID) == "null" {
+		return nil
+	}
+
+	var stringID string
+	if err := json.Unmarshal(aux.AppID, &stringID); err == nil {
+		g.AppID = stringID
+		return nil
+	}
+	var numberID json.Number
+	if err := json.Unmarshal(aux.AppID, &numberID); err != nil {
+		return fmt.Errorf("invalid appid: %w", err)
+	}
+	g.AppID = numberID.String()
+	return nil
+}
+
 type SearchResponse struct {
 	Games []Game `json:"games"`
 }

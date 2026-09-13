@@ -17,6 +17,7 @@ import (
 	"github.com/rufi/dbox/internal/api"
 	"github.com/rufi/dbox/internal/app"
 	"github.com/rufi/dbox/internal/config"
+	"github.com/rufi/dbox/internal/download"
 	"github.com/rufi/dbox/internal/history"
 )
 
@@ -40,6 +41,9 @@ type historyLister interface {
 }
 type handoffService interface {
 	Handoff(string) error
+}
+type handoffEnabledService interface {
+	HandoffEnabled() bool
 }
 
 func Run(args []string, in io.Reader, out, errOut io.Writer) error {
@@ -168,6 +172,7 @@ func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.
 		}
 		switch strings.TrimSpace(choice) {
 		case "1":
+			clearScreen(out)
 			term, e := readLine(r, out, "Search term: ")
 			if e != nil {
 				return e
@@ -187,10 +192,12 @@ func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.
 			if e != nil {
 				return e
 			}
+			clearScreen(out)
 			if e = chooseGame(ctx, r, out, s, result); e != nil {
 				return e
 			}
 		case "2":
+			clearScreen(out)
 			ids, e := readLine(r, out, "AppID(s), separated by spaces or commas: ")
 			if e != nil {
 				return e
@@ -199,6 +206,7 @@ func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.
 				return e
 			}
 		case "3":
+			clearScreen(out)
 			q, e := readLine(r, out, "Fix search (blank for all): ")
 			if e != nil {
 				return e
@@ -211,14 +219,17 @@ func menu(ctx context.Context, in io.Reader, out io.Writer, s Service, c config.
 			if e != nil {
 				return e
 			}
+			clearScreen(out)
 			if e = chooseFix(ctx, r, out, s, result); e != nil {
 				return e
 			}
 		case "4":
+			clearScreen(out)
 			if e := showHistory(out, s, ""); e != nil {
 				return e
 			}
 		case "5":
+			clearScreen(out)
 			updated, e := configCommand(r, out, c, true)
 			if e != nil {
 				return e
@@ -250,6 +261,85 @@ func applySearchFilters(req *api.SearchRequest, text string) {
 }
 
 func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) (config.Config, error) {
+	printConfig(out, c)
+	if !edit {
+		return c, nil
+	}
+
+	r := bufio.NewReader(in)
+	for {
+		fmt.Fprintln(out, "\n1. API key\n2. Download directory\n3. Plan\n4. Auto handoff\n5. Preferred Steam library\n6. Handoff command\n7. Done")
+		choice, err := readLine(r, out, "Select a setting: ")
+		if err != nil {
+			return c, err
+		}
+		switch strings.TrimSpace(choice) {
+		case "1":
+			clearScreen(out)
+			value, e := readAPIKey(r, out)
+			if e != nil {
+				return c, e
+			}
+			if strings.TrimSpace(value) != "" {
+				c.APIKey = strings.TrimSpace(value)
+			}
+		case "2":
+			clearScreen(out)
+			value, e := readLine(r, out, "New download directory (blank to keep current): ")
+			if e != nil {
+				return c, e
+			}
+			if strings.TrimSpace(value) != "" {
+				c.DownloadDir = strings.TrimSpace(value)
+			}
+		case "3":
+			clearScreen(out)
+			value, e := readLine(r, out, "New plan (starter/pro, blank to keep current): ")
+			if e != nil {
+				return c, e
+			}
+			if strings.TrimSpace(value) != "" {
+				c.Plan = config.Plan(strings.TrimSpace(value))
+			}
+		case "4":
+			clearScreen(out)
+			value, e := readLine(r, out, "Auto handoff (off/accela, blank to keep current): ")
+			if e != nil {
+				return c, e
+			}
+			if strings.TrimSpace(value) != "" {
+				c.HandoffTarget = config.HandoffTarget(strings.TrimSpace(value))
+			}
+		case "5":
+			clearScreen(out)
+			value, e := readLine(r, out, "Preferred Steam library (blank for Accela to choose): ")
+			if e != nil {
+				return c, e
+			}
+			c.HandoffLibrary = strings.TrimSpace(value)
+		case "6":
+			clearScreen(out)
+			value, e := readLine(r, out, "Handoff command (blank for accela): ")
+			if e != nil {
+				return c, e
+			}
+			c.HandoffCommand = strings.TrimSpace(value)
+		case "7":
+			if err := saveConfig(c); err != nil {
+				return c, err
+			}
+			fmt.Fprintln(out, "configuration updated")
+			clearScreen(out)
+			return c, nil
+		default:
+			fmt.Fprintln(out, "invalid setting")
+		}
+		clearScreen(out)
+		printConfig(out, c)
+	}
+}
+
+func printConfig(out io.Writer, c config.Config) {
 	displayTarget := string(c.HandoffTarget)
 	if displayTarget == "" {
 		displayTarget = string(config.HandoffNone)
@@ -263,50 +353,20 @@ func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) (con
 		displayLibrary = "Accela chooses"
 	}
 	fmt.Fprintf(out, "Download directory: %s\nPlan: %s\nAPI key: configured\nAuto handoff: %s\nHandoff library: %s\nHandoff command: %s\n", c.DownloadDir, c.Plan, displayTarget, displayLibrary, displayCommand)
-	if !edit {
-		return c, nil
-	}
-	dir, err := readLineFrom(in, out, "New download directory: ")
-	if err != nil {
-		return c, err
-	}
-	plan, err := readLineFrom(in, out, "New plan (starter/pro): ")
-	if err != nil {
-		return c, err
-	}
-	target, err := readLineFrom(in, out, "Auto handoff (off/accela): ")
-	if err != nil {
-		return c, err
-	}
-	library, err := readLineFrom(in, out, "Preferred Steam library (blank to let Accela choose): ")
-	if err != nil {
-		return c, err
-	}
-	command, err := readLineFrom(in, out, "Launcher command override (blank for accela): ")
-	if err != nil {
-		return c, err
-	}
-	c.DownloadDir, c.Plan = strings.TrimSpace(dir), config.Plan(strings.TrimSpace(plan))
-	c.HandoffTarget = config.HandoffTarget(strings.TrimSpace(target))
-	if c.HandoffTarget == "" {
-		c.HandoffTarget = config.HandoffNone
-	}
-	c.HandoffLibrary, c.HandoffCommand = strings.TrimSpace(library), strings.TrimSpace(command)
+}
+
+func saveConfig(c config.Config) error {
 	if err := c.Validate(); err != nil {
-		return c, err
+		return err
 	}
 	if err := os.MkdirAll(c.DownloadDir, 0700); err != nil {
-		return c, err
+		return err
 	}
 	p, err := config.DefaultPath()
 	if err != nil {
-		return c, err
+		return err
 	}
-	if err := config.Save(p, c); err != nil {
-		return c, err
-	}
-	fmt.Fprintln(out, "configuration updated")
-	return c, nil
+	return config.Save(p, c)
 }
 
 func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r api.SearchResponse) error {
@@ -317,8 +377,12 @@ func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r a
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "%s\nImage: %s\n", r.Games[i].Name, r.Games[i].HeaderImageURL)
+	clearScreen(out)
 	renderImage(out, r.Games[i].HeaderImageURL)
+	if r.Games[i].HeaderImageURL != "" {
+		fmt.Fprintln(out)
+	}
+	printGameDetails(out, r.Games[i])
 	fmt.Fprint(out, "Download? (y/n): ")
 	if !yes(in) {
 		return nil
@@ -329,6 +393,22 @@ func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r a
 	} else {
 		p, err = s.DownloadGame(ctx, r.Games[i].AppID)
 	}
+	if errors.Is(err, download.ErrFileExists) && p != "" {
+		if h, ok := s.(handoffService); ok {
+			enabled, configured := s.(handoffEnabledService)
+			if configured && enabled.HandoffEnabled() {
+				if handoffErr := h.Handoff(p); handoffErr != nil {
+					return handoffErr
+				}
+				fmt.Fprintf(out, "Already downloaded: %s\nHanded off existing download: %s\n", p, p)
+			} else {
+				fmt.Fprintf(out, "Already downloaded: %s\n", p)
+			}
+		} else {
+			fmt.Fprintf(out, "Already downloaded: %s\n", p)
+		}
+		return waitForEnter(in, out)
+	}
 	if err == nil {
 		if h, ok := s.(handoffService); ok {
 			if handoffErr := h.Handoff(p); handoffErr != nil {
@@ -338,6 +418,42 @@ func chooseGame(ctx context.Context, in io.Reader, out io.Writer, s Service, r a
 		fmt.Fprintln(out, p)
 	}
 	return err
+}
+
+func waitForEnter(in io.Reader, out io.Writer) error {
+	fmt.Fprint(out, "Press Enter to return to menu: ")
+	r, ok := in.(*bufio.Reader)
+	if !ok {
+		r = bufio.NewReader(in)
+	}
+	_, err := readLine(r, out, "")
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
+}
+
+func printGameDetails(out io.Writer, g api.Game) {
+	fmt.Fprintf(out, "%s\n----------------------------------------\n", g.Name)
+	fmt.Fprintf(out, "AppID:                  %s\n", g.AppID)
+	fmt.Fprintf(out, "DLC:                    %s\n", yesNo(g.IsDLC))
+	fmt.Fprintf(out, "DRM notice:             %s\n", optionalText(g.DRMNotice))
+	fmt.Fprintf(out, "External account note:  %s\n", optionalText(g.ExternalUserAccountNotice))
+	fmt.Fprintf(out, "Header image:           %s\n", g.HeaderImageURL)
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "Yes"
+	}
+	return "No"
+}
+
+func optionalText(value *string) string {
+	if value == nil || *value == "" {
+		return "None"
+	}
+	return *value
 }
 
 func downloadIDs(ctx context.Context, ids []string, out, errOut io.Writer, s Service) error {
@@ -444,6 +560,11 @@ func renderImage(out io.Writer, imageURL string) {
 		fmt.Fprintln(out, string(preview))
 	}
 }
+
+func clearScreen(out io.Writer) {
+	fmt.Fprint(out, "\033[2J\033[H")
+}
+
 func chooseFix(ctx context.Context, in io.Reader, out io.Writer, s Service, r api.FixesResponse) error {
 	for i, f := range r.Fixes {
 		fmt.Fprintf(out, "%d. %s (%s)\n", i+1, f.Name, f.File)
@@ -452,6 +573,7 @@ func chooseFix(ctx context.Context, in io.Reader, out io.Writer, s Service, r ap
 	if err != nil {
 		return err
 	}
+	clearScreen(out)
 	fmt.Fprintf(out, "%s\nDownload? (y/n): ", r.Fixes[i].Name)
 	if !yes(in) {
 		return nil

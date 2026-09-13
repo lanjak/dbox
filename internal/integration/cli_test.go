@@ -132,12 +132,20 @@ func TestDirectDownloadAcceptsMultipleAppIDsSequentially(t *testing.T) {
 func TestSearchSelectionShowsReturnedImageURL(t *testing.T) {
 	a := app.NewWithClient(config.Config{APIKey: "test-key", DownloadDir: t.TempDir(), Plan: config.Starter}, "http://unused", nil)
 	var out strings.Builder
-	service := &searchService{response: api.SearchResponse{Games: []api.Game{{AppID: "70", Name: "Game", HeaderImageURL: "https://example.test/header.jpg"}}}}
+	drm := "DRM note"
+	account := "Account note"
+	service := &searchService{response: api.SearchResponse{Games: []api.Game{{AppID: "70", Name: "Game", IsDLC: true, DRMNotice: &drm, ExternalUserAccountNotice: &account, HeaderImageURL: "https://example.test/header.jpg"}}}}
 	if err := cli.RunWithService([]string{"search", "game"}, strings.NewReader("1\nn\n"), &out, &out, service, a.Config); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "https://example.test/header.jpg") {
-		t.Fatalf("image URL missing from output: %q", out.String())
+	text := out.String()
+	for _, want := range []string{"https://example.test/header.jpg", "AppID:", "70", "DLC:                    Yes", "DRM notice:             DRM note", "External account note:  Account note"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("%q missing from output: %q", want, text)
+		}
+	}
+	if strings.Index(text, "Game\n") > strings.Index(text, "https://example.test/header.jpg") {
+		t.Fatalf("game details should precede image URL metadata: %q", text)
 	}
 }
 
@@ -164,7 +172,7 @@ func TestMenuConfigChangeUpdatesActiveAppForLaterDownload(t *testing.T) {
 	}))
 	defer s.Close()
 	a := app.NewWithClient(config.Config{APIKey: "test-key", DownloadDir: oldDir, Plan: config.Starter}, s.URL, s.Client())
-	input := "5\n" + newDir + "\npro\noff\n\n\n2\n70\n6\n"
+	input := "5\n2\n" + newDir + "\n3\npro\n4\noff\n7\n2\n70\n6\n"
 	var out strings.Builder
 	if err := cli.RunWithService(nil, strings.NewReader(input), &out, &out, a, a.Config); err != nil {
 		t.Fatal(err)

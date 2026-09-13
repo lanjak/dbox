@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/rufi/dbox/internal/api"
@@ -66,7 +68,11 @@ func (a *App) DownloadGame(ctx context.Context, id string) (string, error) {
 }
 
 func (a *App) DownloadGameNamed(ctx context.Context, id, name string) (string, error) {
-	p, err := a.save(ctx, download.SanitizeFilename(name)+".zip", func(w io.Writer) error { return a.Client.DownloadGame(ctx, id, w) })
+	filename := download.SanitizeFilename(name) + ".zip"
+	p, err := a.save(ctx, filename, func(w io.Writer) error { return a.Client.DownloadGame(ctx, id, w) })
+	if errors.Is(err, download.ErrFileExists) {
+		p = filepath.Join(a.Config.DownloadDir, filename)
+	}
 	a.record(history.Entry{Kind: "download", AppID: id, Name: name, Path: p, Status: status(err)})
 	return p, err
 }
@@ -85,6 +91,10 @@ func (a *App) HistoryEntries() ([]history.Entry, error) {
 
 func (a *App) Handoff(path string) error {
 	return handoff.Launch(a.Config.HandoffTarget, a.Config.HandoffCommand, path)
+}
+
+func (a *App) HandoffEnabled() bool {
+	return a.Config.HandoffTarget != "" && a.Config.HandoffTarget != config.HandoffNone
 }
 
 func (a *App) record(entry history.Entry) {

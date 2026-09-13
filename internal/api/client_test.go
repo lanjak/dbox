@@ -70,6 +70,22 @@ func TestSearchSendsAuthenticatedJSONAndDecodesResponse(t *testing.T) {
 	}
 }
 
+func TestSearchDecodesNumericAppID(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"games":[{"appid":1091500,"name":"Cyberpunk 2077","is_dlc":false,"drm_notice":"DRM note","ext_user_account_notice":"Account note","header_image_url":"https://example.test/header.jpg"}]}`)
+	}))
+	defer s.Close()
+
+	c := &Client{BaseURL: s.URL, APIKey: "test-key", HTTPClient: s.Client()}
+	got, err := c.Search(context.Background(), SearchRequest{SearchTerm: "Cyberpunk"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Games) != 1 || got.Games[0].AppID != "1091500" || got.Games[0].IsDLC || got.Games[0].DRMNotice == nil || *got.Games[0].DRMNotice != "DRM note" || got.Games[0].ExternalUserAccountNotice == nil || *got.Games[0].ExternalUserAccountNotice != "Account note" {
+		t.Fatalf("unexpected response %#v", got)
+	}
+}
+
 func TestFixesEncodesQueryAndDownloadUsesExactHeader(t *testing.T) {
 	seen := 0
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

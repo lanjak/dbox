@@ -9,6 +9,7 @@ import (
 
 	"github.com/rufi/dbox/internal/api"
 	"github.com/rufi/dbox/internal/config"
+	"github.com/rufi/dbox/internal/download"
 )
 
 type fakeService struct {
@@ -18,6 +19,23 @@ type fakeService struct {
 	fixTags    string
 	searchReq  api.SearchRequest
 }
+
+type existingDownloadService struct {
+	fakeService
+	enabled   bool
+	handedOff bool
+}
+
+func (s *existingDownloadService) DownloadGameNamed(context.Context, string, string) (string, error) {
+	return "/tmp/Game.zip", download.ErrFileExists
+}
+
+func (s *existingDownloadService) Handoff(string) error {
+	s.handedOff = true
+	return nil
+}
+
+func (s *existingDownloadService) HandoffEnabled() bool { return s.enabled }
 
 func (f *fakeService) Search(context.Context, string) (api.SearchResponse, error) {
 	f.searched = true
@@ -60,6 +78,30 @@ func TestDirectDownloadDoesNotPrompt(t *testing.T) {
 	}
 }
 
+func TestExistingSearchDownloadWithoutHandoffWaitsForEnter(t *testing.T) {
+	s := &existingDownloadService{}
+	var out strings.Builder
+	err := RunWithService([]string{"search", "Game"}, strings.NewReader("1\ny\n\n"), &out, &out, s, config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Already downloaded") || s.handedOff {
+		t.Fatalf("unexpected existing-download handling: output=%q handed_off=%v", out.String(), s.handedOff)
+	}
+}
+
+func TestExistingSearchDownloadHandsOffWhenEnabled(t *testing.T) {
+	s := &existingDownloadService{enabled: true}
+	var out strings.Builder
+	err := RunWithService([]string{"search", "Game"}, strings.NewReader("1\ny\n\n"), &out, &out, s, config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.handedOff || !strings.Contains(out.String(), "Handed off existing download") {
+		t.Fatalf("existing download was not handed off: output=%q handed_off=%v", out.String(), s.handedOff)
+	}
+}
+
 func TestNoArgumentMenuLoopsUntilExit(t *testing.T) {
 	f := &fakeService{}
 	var out strings.Builder
@@ -86,7 +128,7 @@ func TestMenuConfirmationLeavesNextCommandForMenu(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("1\nGame\n\n1\nn\n5\n"+t.TempDir()+"\nstarter\noff\n\n\n6\n"), &out, &out, f, config.Config{APIKey: "key", DownloadDir: "/tmp", Plan: config.Starter}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("1\nGame\n\n1\nn\n5\n7\n6\n"), &out, &out, f, config.Config{APIKey: "key", DownloadDir: "/tmp", Plan: config.Starter}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "dbox", "config.json")); err != nil {

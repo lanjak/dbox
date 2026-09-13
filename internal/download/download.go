@@ -1,12 +1,15 @@
 package download
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+var ErrFileExists = errors.New("file already exists")
 
 type Downloader struct{}
 
@@ -55,7 +58,7 @@ func SaveStream(dir, filename string, src io.Reader, overwrite bool) (string, er
 	final := filepath.Join(dir, filename)
 	if !overwrite {
 		if _, err := os.Stat(final); err == nil {
-			return "", fmt.Errorf("file already exists: %s", filename)
+			return "", fmt.Errorf("%w: %s", ErrFileExists, filename)
 		} else if !os.IsNotExist(err) {
 			return "", err
 		}
@@ -80,7 +83,7 @@ func SaveStream(dir, filename string, src io.Reader, overwrite bool) (string, er
 	} else {
 		if err = os.Link(tmpname, final); err != nil {
 			if os.IsExist(err) {
-				return "", fmt.Errorf("file already exists: %s", filename)
+				return "", fmt.Errorf("%w: %s", ErrFileExists, filename)
 			}
 			return "", err
 		}
