@@ -106,6 +106,8 @@ type Game struct {
 }
 type SearchResponse struct {
 	Games []Game `json:"games"`
+	// Approximate is true when no name contained the term and Games holds close matches.
+	Approximate bool `json:"-"`
 }
 
 type GameDetails struct {

@@ -53,6 +53,9 @@ func (a *App) Search(ctx context.Context, q string) (api.SearchResponse, error) 
 
 func (a *App) SearchWithFilters(ctx context.Context, req api.SearchRequest) (api.SearchResponse, error) {
 	r, err := a.Client.Search(ctx, req)
+	if err == nil && len(r.Games) == 0 {
+		r, err = a.closeMatches(ctx, req)
+	}
 	a.record(history.Entry{Kind: "search", Query: req.SearchTerm, Status: status(err)})
 	return r, err
 }

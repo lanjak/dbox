@@ -696,6 +696,9 @@ func (ss *session) search(req api.SearchRequest) error {
 		return err
 	}
 	clearScreen(ss.out)
+	if result.Approximate && len(result.Games) > 0 {
+		ss.ui.warn("No name contains %q. These are close:", req.SearchTerm)
+	}
 	return ss.chooseGame(result)
 }
 
