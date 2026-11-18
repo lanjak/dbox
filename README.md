@@ -2,7 +2,7 @@
 
 **DepotBox from your terminal.** Search the DepotBox catalog, download depot packages, Lua scripts and game fixes, browse community lists, and hand finished ZIPs to your installer. `dbox` is one small static binary with no dependencies.
 
-**Requirement: a DepotBox API key.** `dbox` does not work without one. Neither the website nor the Discord channel can replace it: the site gates every download behind a browser CAPTCHA, and the Discord flow runs through DepotBox's own bot, not through an interface that a terminal program can call. The key is free to create at [depotbox.lol](https://depotbox.lol).
+**Requirement: a DepotBox API key.** `dbox` does not work without one. The website and the Discord channel cannot replace it: the site requires a browser CAPTCHA, and Discord runs through DepotBox's own bot. Create a key for free at [depotbox.lol](https://depotbox.lol).
 
 ```text
 $ dbox search --no-dlc half life
