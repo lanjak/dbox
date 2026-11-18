@@ -52,7 +52,7 @@ func TestMenuReportsErrorAndKeepsRunning(t *testing.T) {
 	if err := RunWithService(nil, strings.NewReader("1\nx\n\n\nq\n"), &out, &out, &failingSearch{}, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "network down") || strings.Count(out.String(), "q. Quit") != 2 {
+	if !strings.Contains(out.String(), "Network down") || strings.Count(out.String(), "q. Quit") != 2 {
 		t.Fatalf("menu did not continue after error: %q", out.String())
 	}
 }
