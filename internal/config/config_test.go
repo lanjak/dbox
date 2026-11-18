@@ -54,6 +54,17 @@ func TestValidateWindowsSteamRequiresSteamRoot(t *testing.T) {
 	}
 }
 
+func TestValidateLinuxSteamNeedsNoSteamRoot(t *testing.T) {
+	c := Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: Starter, HandoffTarget: HandoffLinuxSteam}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("linux-steam without steam_root: %v", err)
+	}
+	c.SteamRoot = "/home/rufi/.local/share/Steam"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidateRejectsEmptyKeyAndDirectory(t *testing.T) {
 	for _, c := range []Config{{DownloadDir: t.TempDir(), Plan: Starter}, {APIKey: "key", Plan: Starter}} {
 		if err := c.Validate(); err == nil {

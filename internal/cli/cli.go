@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -23,6 +24,7 @@ import (
 	"git.lanjak.net/rufi/dbox/internal/config"
 	"git.lanjak.net/rufi/dbox/internal/download"
 	"git.lanjak.net/rufi/dbox/internal/history"
+	"git.lanjak.net/rufi/dbox/internal/steam"
 )
 
 // Version is set by cmd/dbox from the build flags.
@@ -51,6 +53,9 @@ type handoffService interface {
 }
 type handoffEnabledService interface {
 	HandoffEnabled() bool
+}
+type installedLister interface {
+	InstalledApps() ([]steam.App, error)
 }
 
 // extendedService is the rest of the DepotBox API. *app.App implements it.
@@ -123,6 +128,8 @@ Usage:
                                     (used for close matches; free, and
                                     also refreshed when dbox starts)
   dbox install <archive.zip>        hand a ZIP to the configured handoff target
+  dbox installed                    list the games in your Steam libraries,
+                                    and which ones a handoff installed
   dbox history [term]               recent searches and downloads
   dbox config [edit]                show or change settings
   dbox version                      print the version
@@ -387,6 +394,8 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		ss.ui.ok("Installed: %s", rest[0])
 		return nil
+	case "installed":
+		return ss.installed()
 	case "history":
 		return ss.showHistory(strings.Join(rest, " "), 0)
 	case "config":
@@ -550,6 +559,7 @@ var menuItems = []struct{ key, label string }{
 	{"7", "Request a missing game"},
 	{"8", "Usage and service stats"},
 	{"9", "History"},
+	{"i", "Installed games"},
 	{"r", "Refresh game list"},
 	{"c", "Config"},
 	{"q", "Quit"},
@@ -603,6 +613,9 @@ func (ss *session) menu() error {
 		case "9":
 			clearScreen(ss.out)
 			e = ss.showHistory("", 20)
+		case "i":
+			clearScreen(ss.out)
+			e = ss.installed()
 		case "r":
 			ss.screen("Refresh game list")
 			e = ss.refreshGameList()
@@ -1391,7 +1404,7 @@ func (ss *session) configCommand(in io.Reader, edit bool) (config.Config, error)
 				c.Plan = config.Plan(strings.ToLower(value))
 			}
 		case "4":
-			if value, err = ask("Auto handoff (off/accela/windows-steam, Enter to keep current): "); err != nil {
+			if value, err = ask("Auto handoff (off/accela/linux-steam/windows-steam, Enter to keep current): "); err != nil {
 				return c, err
 			}
 			if value != "" {
@@ -1408,7 +1421,7 @@ func (ss *session) configCommand(in io.Reader, edit bool) (config.Config, error)
 			}
 			c.HandoffCommand = value
 		case "7":
-			if value, err = ask("Steam root (folder containing steam.exe): "); err != nil {
+			if value, err = ask("Steam root (folder containing steam.exe, Enter to auto-detect local Steam): "); err != nil {
 				return c, err
 			}
 			if value != "" {
@@ -1441,7 +1454,11 @@ func (ss *session) printConfig(c config.Config) {
 	ss.ui.field("Auto handoff", target)
 	ss.ui.field("Steam library", orDefault(c.HandoffLibrary, "Accela chooses"))
 	ss.ui.field("Handoff command", orDefault(c.HandoffCommand, "accela"))
-	ss.ui.field("Steam root", orDefault(c.SteamRoot, "not set"))
+	root := orDefault(c.SteamRoot, "not set")
+	if c.SteamRoot == "" && c.HandoffTarget == config.HandoffLinuxSteam {
+		root = "auto-detect"
+	}
+	ss.ui.field("Steam root", root)
 }
 
 func saveConfig(c config.Config) error {
@@ -1459,6 +1476,46 @@ func saveConfig(c config.Config) error {
 }
 
 // --- history ----------------------------------------------------------------
+
+// --- installed games --------------------------------------------------------
+
+// installed lists the games in the Steam libraries. It reads Steam's own
+// appmanifest files, so games that Steam installed show up next to the ones a
+// handoff put there.
+func (ss *session) installed() error {
+	lister, ok := ss.s.(installedLister)
+	if !ok {
+		ss.ui.warn("Installed games are unavailable.")
+		return nil
+	}
+	apps, err := lister.InstalledApps()
+	if err != nil {
+		return err
+	}
+	ss.ui.title("Installed games")
+	if len(apps) == 0 {
+		ss.ui.warn("No Steam games found.")
+		return nil
+	}
+	sort.Slice(apps, func(i, j int) bool {
+		return strings.ToLower(apps[i].Name) < strings.ToLower(apps[j].Name)
+	})
+	managed := 0
+	for _, a := range apps {
+		source, size := ss.ui.dim("steam  "), humanBytes(a.SizeOnDisk)
+		if a.Managed {
+			source = ss.ui.green("managed")
+			managed++
+		}
+		if !a.Installed {
+			size = ss.ui.dim("not installed")
+		}
+		fmt.Fprintf(ss.out, "  %s %s %s %8s %s\n", ss.ui.dim(pad(a.AppID, 8)), pad(a.Name, 44), source, size, ss.ui.dim(a.Library))
+	}
+	fmt.Fprintln(ss.out)
+	ss.ui.ok("%s, %s managed by dbox or a client mod. Steam handles updates and removal.", plural(len(apps), "game", "games"), humanCount(managed))
+	return nil
+}
 
 // showHistory lists recent actions, newest first. limit 0 shows all.
 func (ss *session) showHistory(query string, limit int) error {

@@ -16,6 +16,7 @@ import (
 	"git.lanjak.net/rufi/dbox/internal/handoff"
 	"git.lanjak.net/rufi/dbox/internal/history"
 	"git.lanjak.net/rufi/dbox/internal/ratelimit"
+	"git.lanjak.net/rufi/dbox/internal/steam"
 )
 
 const DefaultBaseURL = "https://depotbox.lol"
@@ -150,10 +151,41 @@ func (a *App) Handoff(path string) error {
 	if !a.HandoffEnabled() {
 		return nil
 	}
-	if a.Config.HandoffTarget == config.HandoffWindowsSteam {
+	switch a.Config.HandoffTarget {
+	case config.HandoffWindowsSteam:
 		return handoff.InstallSteamZip(path, a.Config.SteamRoot)
+	case config.HandoffLinuxSteam:
+		return handoff.InstallLinuxSteamZip(path, a.Config.SteamRoot)
 	}
 	return handoff.Launch(a.Config.HandoffTarget, a.Config.HandoffCommand, path)
+}
+
+// InstalledApps lists the games that Steam knows about. A game is marked as
+// managed when dbox downloaded it or when a client mod has a Lua script for it,
+// so the ones that did not come from a purchase stand out.
+func (a *App) InstalledApps() ([]steam.App, error) {
+	root, err := steam.Root(a.Config.SteamRoot)
+	if err != nil {
+		return nil, err
+	}
+	apps := steam.InstalledApps(root)
+	fromDbox := map[string]bool{}
+	if entries, err := a.HistoryEntries(); err == nil {
+		for _, e := range entries {
+			if e.AppID == "" || e.Status == "failed" || !digitsOnly(e.AppID) {
+				continue
+			}
+			if e.Kind == "download" || e.Kind == "lua" {
+				fromDbox[e.AppID] = true
+			}
+		}
+	}
+	for i := range apps {
+		if fromDbox[apps[i].AppID] {
+			apps[i].Managed = true
+		}
+	}
+	return apps, nil
 }
 
 func (a *App) HandoffEnabled() bool {
@@ -165,6 +197,18 @@ func (a *App) record(entry history.Entry) {
 		entry.At = time.Now().UTC()
 		_ = a.History.Append(entry)
 	}
+}
+
+func digitsOnly(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func status(err error) string {

@@ -17,6 +17,7 @@ const (
 	Pro                 Plan          = "pro"
 	HandoffNone         HandoffTarget = "off"
 	HandoffAccela       HandoffTarget = "accela"
+	HandoffLinuxSteam   HandoffTarget = "linux-steam"
 	HandoffWindowsSteam HandoffTarget = "windows-steam"
 )
 
@@ -45,13 +46,16 @@ func (c Config) Validate() error {
 	if c.HandoffTarget == "" {
 		return nil
 	}
-	if c.HandoffTarget != HandoffNone && c.HandoffTarget != HandoffAccela && c.HandoffTarget != HandoffWindowsSteam {
-		return fmt.Errorf("unsupported handoff target %q", c.HandoffTarget)
+	switch c.HandoffTarget {
+	case HandoffNone, HandoffAccela, HandoffLinuxSteam:
+		return nil
+	case HandoffWindowsSteam:
+		if c.SteamRoot == "" {
+			return errors.New("steam_root is required for windows-steam handoff")
+		}
+		return nil
 	}
-	if c.HandoffTarget == HandoffWindowsSteam && c.SteamRoot == "" {
-		return errors.New("steam_root is required for windows-steam handoff")
-	}
-	return nil
+	return fmt.Errorf("unsupported handoff target %q", c.HandoffTarget)
 }
 
 func Load(path string) (Config, error) {

@@ -26,7 +26,8 @@ Select a game (1-3, Enter to go back): 2
 - **Community lists**: browse public lists and download a full list in one step.
 - **Game requests**: ask DepotBox to add a missing game, and follow the status of your requests.
 - **Usage**: your API usage and live DepotBox service statistics.
-- **Handoff**: send each new ZIP to ACCELA or [ASSella](https://github.com/niwia/ASSella), or install it directly into a Windows Steam folder.
+- **Handoff**: send each new ZIP to ACCELA or [ASSella](https://github.com/niwia/ASSella), or install the `.lua` and manifests straight into a Steam folder on Linux or Windows.
+- **Installed games**: list what is in your Steam libraries, and which of those dbox set up.
 - A live progress line, colour output, an interactive menu, and history of your last 100 actions.
 - Safe by design: downloads go to a temporary file first, existing files are never replaced, the API key is never printed, and requests stay inside your plan's rate limit.
 
@@ -114,6 +115,7 @@ Run `dbox` with no arguments for the interactive menu. Each menu item is also a 
 | `dbox usage` | Show your API usage and DepotBox service statistics. |
 | `dbox refresh` | Download the DepotBox game list now. `dbox` uses it to find close matches. |
 | `dbox install <archive.zip>` | Send a ZIP to the handoff target. |
+| `dbox installed` | List the games in your Steam libraries and which ones are managed. |
 | `dbox history [term]` | Show recent searches and downloads. |
 | `dbox config [edit]` | Show or change settings. |
 | `dbox help`, `dbox version` | Help and version. |
@@ -145,6 +147,7 @@ dbox check 70 1 220                     # which of these can I get?
 dbox lua 70                             # only 70.lua
 dbox fixes --tag online elden           # online fixes for ELDEN RING
 dbox info 489830                        # details and DLC list
+dbox installed                          # what is in your Steam libraries
 ```
 
 When DepotBox does not have a game, `dbox` tells you and offers to send a request for it.
@@ -157,7 +160,12 @@ When DepotBox does not have a game, `dbox` tells you and offers to send a reques
 | --- | --- |
 | `off` | Nothing. This is the default. |
 | `accela` | Starts `accela <zip>`, the same as when you drop the ZIP on ACCELA or [ASSella](https://github.com/niwia/ASSella). Set "Handoff command" if the launcher is not `accela` on your `PATH`. |
-| `windows-steam` | Copies the `.lua` and `.manifest` files into the Steam folder that you set as "Windows Steam root" (the folder that contains `steam.exe`). An existing `.lua` is backed up first. |
+| `linux-steam` | Copies the `.lua` to `<steam>/config/stplug-in` and the manifests to the `steamapps/depotcache` of the library that holds the game, or of the default library. The Steam folder is found automatically (`~/.steam/steam`, `~/.local/share/Steam`, Flatpak); set "Steam root" to use another one. An existing `.lua` is backed up first. |
+| `windows-steam` | The same two folders under the Steam folder that you set as "Steam root" (the folder that contains `steam.exe`). |
+
+`linux-steam` installs the files only. Steam shows the game and downloads it once a client mod such as [SLSsteam](https://github.com/AceSLS/SLSsteam) registers the AppID, and the mod writes the appmanifest itself. `dbox` never downloads game content.
+
+`dbox installed` reads Steam's own `appmanifest` files, so it lists the games that Steam installed too. A game is marked `managed` when dbox downloaded it or when a client mod has a `.lua` for it. Steam handles updates and removal.
 
 Fix ZIPs are never handed off, because they patch game files and are not depot packages. Use `dbox install <zip>` to hand off a ZIP that you already have.
 
