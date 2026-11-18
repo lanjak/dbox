@@ -162,8 +162,15 @@ fi
 mkdir -p "$INSTALL_DIR" 2>/dev/null || die "cannot create $INSTALL_DIR (try with sudo, or use --dir)"
 [ -w "$INSTALL_DIR" ] || die "cannot write to $INSTALL_DIR (try with sudo, or use --dir)"
 chmod 0755 "$tmp/dbox"
+old=''
+[ -x "$INSTALL_DIR/dbox" ] && old=$("$INSTALL_DIR/dbox" version 2>/dev/null || echo 'an older dbox')
 mv -f "$tmp/dbox" "$INSTALL_DIR/dbox" || die "cannot install into $INSTALL_DIR"
-ok "installed $("$INSTALL_DIR/dbox" version) to $INSTALL_DIR/dbox"
+new=$("$INSTALL_DIR/dbox" version)
+if [ -n "$old" ]; then
+	ok "upgraded $old -> $new in $INSTALL_DIR/dbox"
+else
+	ok "installed $new to $INSTALL_DIR/dbox"
+fi
 
 case ":$PATH:" in
 *":$INSTALL_DIR:"*) ;;
@@ -197,4 +204,8 @@ if ! command -v chafa >/dev/null 2>&1; then
 	[ -n "$hint" ] && say "optional: install chafa to see game images in the terminal: $hint"
 fi
 
-say "run ${B}dbox${N} to start (the first run asks for your DepotBox API key)"
+if [ -n "$old" ]; then
+	say "run ${B}dbox${N} to start; your settings are kept"
+else
+	say "run ${B}dbox${N} to start (the first run asks for your DepotBox API key)"
+fi
