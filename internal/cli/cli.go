@@ -129,7 +129,7 @@ Usage:
                                     also refreshed when dbox starts)
   dbox install <archive.zip>        hand a ZIP to the configured handoff target
   dbox installed                    list the games in your Steam libraries,
-                                    and which ones a handoff installed
+                                    and which ones dbox set up
   dbox history [term]               recent searches and downloads
   dbox config [edit]                show or change settings
   dbox version                      print the version

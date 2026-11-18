@@ -171,6 +171,15 @@ On Linux the usual flow is `accela`, because ASSella runs the whole process from
 
 Fix ZIPs are never handed off, because they patch game files and are not depot packages. Use `dbox install <zip>` to hand off a ZIP that you already have.
 
+The settings file holds the same values:
+
+| Key | Values |
+| --- | --- |
+| `handoff_target` | `off`, `accela` or `steam`. `windows-steam` still works as the earlier name of `steam`. |
+| `handoff_command` | The program that `accela` starts. Empty means `accela`. |
+| `handoff_library` | The Steam library to tell ACCELA to use. Empty means it chooses. |
+| `steam_root` | The Steam folder for the `steam` target and for `dbox installed`. Empty means `dbox` finds it. |
+
 ## Files and privacy
 
 | File | Location |
@@ -196,6 +205,7 @@ The settings file holds your API key. On Linux, macOS and FreeBSD, `dbox` makes 
 | --- | --- |
 | `dbox: command not found` | Add the install folder to your `PATH`. The installer shows the line to add. |
 | `load config ...` error | The settings file is damaged. Correct it, or delete it and run `dbox` again to repeat the setup. |
+| `unsupported handoff target` | The settings file names a target that no longer exists, for example `linux-steam`. Set `handoff_target` to `accela` or `steam`, or delete the file. |
 | `DepotBox API error 403` | The key is not valid, not yet approved, or limited to other IP addresses. Look at your DepotBox dashboard. |
 | A game shows "not available" | Use `dbox request <appid>` to ask for it. |
 | No images | Install `chafa`. Images show only in a terminal, not when the output goes to a file. |
