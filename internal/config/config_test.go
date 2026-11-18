@@ -43,6 +43,17 @@ func TestValidateRejectsUnsupportedHandoffTarget(t *testing.T) {
 	}
 }
 
+func TestValidateWindowsSteamRequiresSteamRoot(t *testing.T) {
+	c := Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: Pro, HandoffTarget: HandoffTarget("windows-steam")}
+	if err := c.Validate(); err == nil {
+		t.Fatal("missing Steam root accepted")
+	}
+	c.SteamRoot = `C:\Program Files (x86)\Steam`
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidateRejectsEmptyKeyAndDirectory(t *testing.T) {
 	for _, c := range []Config{{DownloadDir: t.TempDir(), Plan: Starter}, {APIKey: "key", Plan: Starter}} {
 		if err := c.Validate(); err == nil {

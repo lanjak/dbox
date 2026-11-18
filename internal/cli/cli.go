@@ -133,6 +133,23 @@ func RunWithService(args []string, in io.Reader, out, errOut io.Writer, s Servic
 			return errors.New("usage: dbox download <appid> [appid ...]")
 		}
 		return downloadIDs(ctx, args[1:], out, errOut, s)
+	case "install":
+		if len(args) != 2 {
+			return errors.New("usage: dbox install <archive.zip>")
+		}
+		enabled, ok := s.(handoffEnabledService)
+		if !ok || !enabled.HandoffEnabled() {
+			return errors.New("enable a handoff target before installing a ZIP")
+		}
+		h, ok := s.(handoffService)
+		if !ok {
+			return errors.New("the configured service cannot install a ZIP")
+		}
+		if err := h.Handoff(args[1]); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "Installed:", args[1])
+		return nil
 	case "history":
 		if len(args) > 2 {
 			return errors.New("usage: dbox history [search-term]")
@@ -268,7 +285,7 @@ func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) (con
 
 	r := bufio.NewReader(in)
 	for {
-		fmt.Fprintln(out, "\n1. API key\n2. Download directory\n3. Plan\n4. Auto handoff\n5. Preferred Steam library\n6. Handoff command\n7. Done")
+		fmt.Fprintln(out, "\n1. API key\n2. Download directory\n3. Plan\n4. Auto handoff\n5. Preferred Steam library\n6. Handoff command\n7. Done\n8. Windows Steam root")
 		choice, err := readLine(r, out, "Select a setting: ")
 		if err != nil {
 			return c, err
@@ -303,7 +320,7 @@ func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) (con
 			}
 		case "4":
 			clearScreen(out)
-			value, e := readLine(r, out, "Auto handoff (off/accela, blank to keep current): ")
+			value, e := readLine(r, out, "Auto handoff (off/accela/windows-steam, blank to keep current): ")
 			if e != nil {
 				return c, e
 			}
@@ -331,6 +348,15 @@ func configCommand(in io.Reader, out io.Writer, c config.Config, edit bool) (con
 			fmt.Fprintln(out, "configuration updated")
 			clearScreen(out)
 			return c, nil
+		case "8":
+			clearScreen(out)
+			value, e := readLine(r, out, "Steam root (folder containing steam.exe): ")
+			if e != nil {
+				return c, e
+			}
+			if strings.TrimSpace(value) != "" {
+				c.SteamRoot = strings.TrimSpace(value)
+			}
 		default:
 			fmt.Fprintln(out, "invalid setting")
 		}
@@ -352,7 +378,7 @@ func printConfig(out io.Writer, c config.Config) {
 	if displayLibrary == "" {
 		displayLibrary = "Accela chooses"
 	}
-	fmt.Fprintf(out, "Download directory: %s\nPlan: %s\nAPI key: configured\nAuto handoff: %s\nHandoff library: %s\nHandoff command: %s\n", c.DownloadDir, c.Plan, displayTarget, displayLibrary, displayCommand)
+	fmt.Fprintf(out, "Download directory: %s\nPlan: %s\nAPI key: configured\nAuto handoff: %s\nHandoff library: %s\nHandoff command: %s\nSteam root: %s\n", c.DownloadDir, c.Plan, displayTarget, displayLibrary, displayCommand, c.SteamRoot)
 }
 
 func saveConfig(c config.Config) error {

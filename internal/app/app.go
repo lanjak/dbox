@@ -90,6 +90,9 @@ func (a *App) HistoryEntries() ([]history.Entry, error) {
 }
 
 func (a *App) Handoff(path string) error {
+	if a.Config.HandoffTarget == config.HandoffWindowsSteam {
+		return handoff.InstallSteamZip(path, a.Config.SteamRoot)
+	}
 	return handoff.Launch(a.Config.HandoffTarget, a.Config.HandoffCommand, path)
 }
 

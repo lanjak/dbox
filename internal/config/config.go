@@ -13,10 +13,11 @@ type Plan string
 type HandoffTarget string
 
 const (
-	Starter       Plan          = "starter"
-	Pro           Plan          = "pro"
-	HandoffNone   HandoffTarget = "off"
-	HandoffAccela HandoffTarget = "accela"
+	Starter             Plan          = "starter"
+	Pro                 Plan          = "pro"
+	HandoffNone         HandoffTarget = "off"
+	HandoffAccela       HandoffTarget = "accela"
+	HandoffWindowsSteam HandoffTarget = "windows-steam"
 )
 
 type Config struct {
@@ -26,6 +27,7 @@ type Config struct {
 	HandoffTarget  HandoffTarget `json:"handoff_target,omitempty"`
 	HandoffLibrary string        `json:"handoff_library,omitempty"`
 	HandoffCommand string        `json:"handoff_command,omitempty"`
+	SteamRoot      string        `json:"steam_root,omitempty"`
 }
 
 func New() Config { return Config{} }
@@ -43,8 +45,11 @@ func (c Config) Validate() error {
 	if c.HandoffTarget == "" {
 		return nil
 	}
-	if c.HandoffTarget != HandoffNone && c.HandoffTarget != HandoffAccela {
+	if c.HandoffTarget != HandoffNone && c.HandoffTarget != HandoffAccela && c.HandoffTarget != HandoffWindowsSteam {
 		return fmt.Errorf("unsupported handoff target %q", c.HandoffTarget)
+	}
+	if c.HandoffTarget == HandoffWindowsSteam && c.SteamRoot == "" {
+		return errors.New("steam_root is required for windows-steam handoff")
 	}
 	return nil
 }

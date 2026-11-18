@@ -61,6 +61,19 @@ func TestConfigEditorChangesOnlySelectedSetting(t *testing.T) {
 	}
 }
 
+func TestConfigEditorSetsSteamRootWithoutChangingKey(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	c := config.Config{APIKey: "secret", DownloadDir: t.TempDir(), Plan: config.Pro}
+	var out strings.Builder
+	got, err := configCommand(strings.NewReader("8\nC:\\Steam\n4\nwindows-steam\n7\n"), &out, c, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SteamRoot != `C:\Steam` || got.HandoffTarget != config.HandoffWindowsSteam || got.APIKey != "secret" {
+		t.Fatalf("Windows handoff not configured")
+	}
+}
+
 func TestConfigEditorClearsScreenWhenDone(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	c := config.Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: config.Starter}

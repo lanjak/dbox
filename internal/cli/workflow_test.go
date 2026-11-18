@@ -26,6 +26,24 @@ type existingDownloadService struct {
 	handedOff bool
 }
 
+func TestInstallCommandHandsExistingZipToConfiguredTarget(t *testing.T) {
+	s := &existingDownloadService{enabled: true}
+	var out strings.Builder
+	if err := RunWithService([]string{"install", "C:\\Downloads\\game.zip"}, strings.NewReader(""), &out, &out, s, config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	if !s.handedOff {
+		t.Fatal("existing ZIP was not handed off")
+	}
+}
+
+func TestInstallCommandRequiresEnabledHandoff(t *testing.T) {
+	s := &existingDownloadService{}
+	if err := RunWithService([]string{"install", "game.zip"}, strings.NewReader(""), &strings.Builder{}, &strings.Builder{}, s, config.Config{}); err == nil {
+		t.Fatal("disabled handoff accepted")
+	}
+}
+
 func (s *existingDownloadService) DownloadGameNamed(context.Context, string, string) (string, error) {
 	return "/tmp/Game.zip", download.ErrFileExists
 }
