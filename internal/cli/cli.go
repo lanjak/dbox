@@ -550,19 +550,21 @@ var menuItems = []struct{ key, label string }{
 func (ss *session) menu() error {
 	r := bufio.NewReader(ss.in)
 	ss.in = r
-	fmt.Fprintf(ss.out, "%s %s\n", ss.ui.bold(ss.ui.cyan("dbox")), ss.ui.dim("DepotBox CLI "+Version))
 	for {
 		if ss.ctx.Err() != nil {
 			return nil
 		}
-		fmt.Fprintln(ss.out)
+		clearScreen(ss.out)
+		fmt.Fprintf(ss.out, "%s %s\n\n", ss.ui.bold(ss.ui.cyan("dbox")), ss.ui.dim("DepotBox CLI "+Version))
 		for _, it := range menuItems {
 			fmt.Fprintf(ss.out, "  %s. %s\n", ss.ui.cyan(it.key), it.label)
 		}
+		fmt.Fprintln(ss.out)
 		choice, err := readLine(r, ss.out, ss.ui.bold("Select an option: "))
 		if err != nil && choice == "" {
 			return nil
 		}
+		ss.ui.shown = false
 		var e error
 		switch strings.ToLower(strings.TrimSpace(choice)) {
 		case "1":
@@ -602,6 +604,7 @@ func (ss *session) menu() error {
 				if updater, ok := ss.s.(configUpdater); ok {
 					updater.UpdateConfig(updated)
 				}
+				ss.ui.shown = false // the editor showed its own result
 			}
 			e = err
 		case "q", "0", "quit", "exit":
@@ -615,6 +618,13 @@ func (ss *session) menu() error {
 		}
 		if e != nil {
 			ss.ui.fail(ss.out, "%v", e)
+		}
+		// The next loop clears the screen, so let the user read the result first.
+		if ss.ui.shown {
+			fmt.Fprintln(ss.out)
+			if _, err := ss.prompt("Press Enter to return to menu: "); err != nil {
+				return nil
+			}
 		}
 	}
 }
@@ -787,9 +797,6 @@ func (ss *session) downloadOne(id, name string, interactive bool) error {
 			}
 			ss.ui.ok("Handed off existing download: %s", p)
 		}
-		if interactive {
-			return ss.waitForEnter()
-		}
 		return nil
 	case api.IsNotFound(err):
 		ss.ui.fail(ss.out, "DepotBox has no depot keys for %s (AppID %s).", label, id)
@@ -830,14 +837,6 @@ func (ss *session) handoffEnabled() bool {
 
 func (ss *session) handoff(path string) error {
 	return ss.s.(handoffService).Handoff(path)
-}
-
-func (ss *session) waitForEnter() error {
-	_, err := ss.prompt("Press Enter to continue: ")
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-	return err
 }
 
 func (ss *session) printGameDetails(g api.Game) {
@@ -1281,7 +1280,7 @@ func (ss *session) configCommand(in io.Reader, edit bool) (config.Config, error)
 		return strings.TrimSpace(v), err
 	}
 	for {
-		fmt.Fprintln(ss.out, "\n  1. API key\n  2. Download directory\n  3. Plan\n  4. Auto handoff\n  5. Preferred Steam library\n  6. Handoff command\n  7. Windows Steam root\n  0. Save and return")
+		fmt.Fprint(ss.out, "\n  1. API key\n  2. Download directory\n  3. Plan\n  4. Auto handoff\n  5. Preferred Steam library\n  6. Handoff command\n  7. Windows Steam root\n  0. Save and return\n\n")
 		choice, err := readLine(r, ss.out, ss.ui.bold("Select a setting: "))
 		if err != nil && choice == "" {
 			return c, err
@@ -1384,7 +1383,7 @@ func saveConfig(c config.Config) error {
 func (ss *session) showHistory(query string) error {
 	lister, ok := ss.s.(historyLister)
 	if !ok {
-		fmt.Fprintln(ss.out, "history is unavailable")
+		ss.ui.warn("History is unavailable.")
 		return nil
 	}
 	entries, err := lister.HistoryEntries()
@@ -1481,6 +1480,7 @@ func splitIDs(text string) []string {
 func (ss *session) readSelection(n int, what string) (int, bool, error) {
 	line, err := ss.prompt(fmt.Sprintf("Select a %s (1-%d, Enter to go back): ", what, n))
 	if line == "" {
+		ss.ui.shown = false // the user chose to go back
 		if errors.Is(err, io.EOF) {
 			err = nil
 		}
@@ -1531,7 +1531,13 @@ func parseSelection(lines []string, n int) (int, error) {
 	}
 	return i - 1, nil
 }
+
+// yes reads a y/n answer. "No" means go back, so the menu does not pause after it.
 func (ss *session) yes() bool {
 	line, _ := readInputLine(ss.in)
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
+	ok := strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
+	if !ok {
+		ss.ui.shown = false
+	}
+	return ok
 }

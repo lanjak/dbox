@@ -17,6 +17,9 @@ type ui struct {
 	out, errOut io.Writer
 	color, live bool
 	cur         atomic.Pointer[activity]
+	// shown is true once a result or message is printed; the menu then
+	// waits for Enter before it clears the screen.
+	shown bool
 }
 
 func newUI(out, errOut io.Writer) *ui {
@@ -51,15 +54,19 @@ func (u *ui) sym(fancy, plain string) string {
 }
 
 func (u *ui) ok(format string, a ...any) {
+	u.shown = true
 	fmt.Fprintf(u.out, "%s %s\n", u.green(u.sym("✓", "ok:")), fmt.Sprintf(format, a...))
 }
 func (u *ui) warn(format string, a ...any) {
+	u.shown = true
 	fmt.Fprintf(u.out, "%s %s\n", u.yellow(u.sym("•", "note:")), fmt.Sprintf(format, a...))
 }
 func (u *ui) fail(w io.Writer, format string, a ...any) {
+	u.shown = true
 	fmt.Fprintf(w, "%s %s\n", u.red(u.sym("✗", "error:")), fmt.Sprintf(format, a...))
 }
 func (u *ui) title(s string) {
+	u.shown = true
 	fmt.Fprintf(u.out, "%s\n%s\n", u.bold(s), u.dim(strings.Repeat(u.sym("─", "-"), min(utf8.RuneCountInString(s), 60))))
 }
 

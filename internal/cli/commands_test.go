@@ -49,7 +49,7 @@ func (f *failingSearch) SearchWithFilters(context.Context, api.SearchRequest) (a
 
 func TestMenuReportsErrorAndKeepsRunning(t *testing.T) {
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("1\nx\n\nq\n"), &out, &out, &failingSearch{}, config.Config{}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("1\nx\n\n\nq\n"), &out, &out, &failingSearch{}, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "network down") || strings.Count(out.String(), "q. Quit") != 2 {
@@ -107,5 +107,23 @@ func TestBlankSelectionGoesBack(t *testing.T) {
 	f := &fakeService{}
 	if err := RunWithService([]string{"search", "x"}, strings.NewReader("\n"), &strings.Builder{}, &strings.Builder{}, f, config.Config{}); err != nil || f.downloaded != "" {
 		t.Fatalf("err %v downloaded %q", err, f.downloaded)
+	}
+}
+
+func TestMenuPausesAfterResultsButNotAfterGoingBack(t *testing.T) {
+	var out strings.Builder
+	// search, pick 1, answer n (go back): no pause; then history: pause; then quit
+	if err := RunWithService(nil, strings.NewReader("1\nGame\n\n1\nn\n9\n\nq\n"), &out, &out, &fakeService{}, config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if strings.Count(text, "Press Enter to return to menu") != 1 {
+		t.Fatalf("want one pause (after history): %q", text)
+	}
+	if !strings.Contains(text, "  q. Quit\n\nSelect an option") {
+		t.Fatalf("no blank line before the prompt: %q", text)
+	}
+	if strings.Count(text, "\033[2J\033[H"+"dbox") != 3 {
+		t.Fatalf("menu not drawn on a cleared screen each time: %q", text)
 	}
 }
