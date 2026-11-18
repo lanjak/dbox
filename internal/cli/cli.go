@@ -1452,8 +1452,10 @@ func (ss *session) printConfig(c config.Config) {
 	ss.ui.field("Download dir", c.DownloadDir)
 	ss.ui.field("Plan", string(c.Plan))
 	ss.ui.field("Auto handoff", target)
-	ss.ui.field("Steam library", orDefault(c.HandoffLibrary, "Accela chooses"))
-	ss.ui.field("Handoff command", orDefault(c.HandoffCommand, "accela"))
+	if c.HandoffTarget == config.HandoffAccela {
+		ss.ui.field("Steam library", orDefault(c.HandoffLibrary, "Accela chooses"))
+		ss.ui.field("Handoff command", orDefault(c.HandoffCommand, "accela"))
+	}
 	root := orDefault(c.SteamRoot, "not set")
 	if c.SteamRoot == "" && c.HandoffTarget == config.HandoffLinuxSteam {
 		root = "auto-detect"
