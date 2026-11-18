@@ -66,6 +66,48 @@ func TestInstallSteamZipPlacesLuaAndManifest(t *testing.T) {
 	}
 }
 
+func TestInstallSteamZipUsesTheLibraryThatHoldsTheGame(t *testing.T) {
+	root := makeSteam(t)
+	if err := os.MkdirAll(filepath.Join(root, "steamapps"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(other, "steamapps"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "steamapps", "libraryfolders.vdf"), []byte(`"libraryfolders"
+{
+	"0"
+	{
+		"path"		"`+root+`"
+	}
+	"1"
+	{
+		"path"		"`+other+`"
+	}
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other, "steamapps", "appmanifest_480.acf"), []byte(`"AppState"
+{
+	"appid"		"480"
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	archive := makeArchive(t, map[string]string{"480.lua": "addappid(480)", "481_9.manifest": "data"})
+	if err := InstallSteamZip(archive, root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(other, "steamapps", "depotcache", "481_9.manifest")); err != nil {
+		t.Fatalf("manifest not in the installed library: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "config", "stplug-in", "480.lua")); err != nil {
+		t.Fatalf("Lua script: %v", err)
+	}
+}
+
 func TestInstallSteamZipBacksUpExistingLua(t *testing.T) {
 	root := makeSteam(t)
 	dir := filepath.Join(root, "config", "stplug-in")

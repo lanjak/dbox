@@ -51,6 +51,28 @@ func TestRootFindsSteamUnderHome(t *testing.T) {
 	}
 }
 
+func TestRootFindsSteamOnMacOS(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := filepath.Join(home, "Library", "Application Support", "Steam")
+	if err := os.MkdirAll(filepath.Join(want, "steamapps"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Root("")
+	if err != nil || got != want {
+		t.Fatalf("root %q, %v", got, err)
+	}
+}
+
+func TestUnescapeVDFHandlesWindowsPaths(t *testing.T) {
+	if got := unescapeVDF(`C:\\Program Files (x86)\\Steam`); got != `C:\Program Files (x86)\Steam` {
+		t.Fatalf("got %q", got)
+	}
+	if got := unescapeVDF("/home/rufi/.local/share/Steam"); got != "/home/rufi/.local/share/Steam" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestLibrariesReadsLibraryFoldersAndKeepsOnlyRealLibraries(t *testing.T) {
 	root := makeRoot(t)
 	second := t.TempDir()

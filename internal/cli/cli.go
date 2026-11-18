@@ -1404,7 +1404,7 @@ func (ss *session) configCommand(in io.Reader, edit bool) (config.Config, error)
 				c.Plan = config.Plan(strings.ToLower(value))
 			}
 		case "4":
-			if value, err = ask("Auto handoff (off/accela/linux-steam/windows-steam, Enter to keep current): "); err != nil {
+			if value, err = ask("Auto handoff (off/accela/windows-steam, Enter to keep current): "); err != nil {
 				return c, err
 			}
 			if value != "" {
@@ -1421,7 +1421,7 @@ func (ss *session) configCommand(in io.Reader, edit bool) (config.Config, error)
 			}
 			c.HandoffCommand = value
 		case "7":
-			if value, err = ask("Steam root (folder containing steam.exe, Enter to auto-detect local Steam): "); err != nil {
+			if value, err = ask("Steam root (folder with steam.exe or steamapps, Enter to auto-detect local Steam): "); err != nil {
 				return c, err
 			}
 			if value != "" {
@@ -1456,11 +1456,7 @@ func (ss *session) printConfig(c config.Config) {
 		ss.ui.field("Steam library", orDefault(c.HandoffLibrary, "Accela chooses"))
 		ss.ui.field("Handoff command", orDefault(c.HandoffCommand, "accela"))
 	}
-	root := orDefault(c.SteamRoot, "not set")
-	if c.SteamRoot == "" && c.HandoffTarget == config.HandoffLinuxSteam {
-		root = "auto-detect"
-	}
-	ss.ui.field("Steam root", root)
+	ss.ui.field("Steam root", orDefault(c.SteamRoot, "auto-detect"))
 }
 
 func saveConfig(c config.Config) error {

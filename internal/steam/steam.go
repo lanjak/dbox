@@ -52,6 +52,7 @@ func candidates(home string) []string {
 		filepath.Join(home, ".local", "share", "Steam"),
 		filepath.Join(home, ".steam", "root"),
 		filepath.Join(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"),
+		filepath.Join(home, "Library", "Application Support", "Steam"),
 	}
 }
 
@@ -79,7 +80,7 @@ func Libraries(root string) []string {
 		if m == nil {
 			continue
 		}
-		dir := filepath.Clean(m[1])
+		dir := filepath.Clean(unescapeVDF(m[1]))
 		if seen[dir] || !isLibrary(dir) {
 			continue
 		}
@@ -88,6 +89,11 @@ func Libraries(root string) []string {
 	}
 	return libs
 }
+
+// unescapeVDF turns the doubled backslashes of a Valve keyvalues file into
+// single ones, so Windows library paths work. Linux and macOS paths are
+// unchanged.
+func unescapeVDF(s string) string { return strings.ReplaceAll(s, `\\`, `\`) }
 
 // isLibrary reports whether dir holds a steamapps folder.
 func isLibrary(dir string) bool {

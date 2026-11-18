@@ -37,9 +37,11 @@ func TestValidateRejectsUnsupportedPlan(t *testing.T) {
 }
 
 func TestValidateRejectsUnsupportedHandoffTarget(t *testing.T) {
-	c := Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: Starter, HandoffTarget: HandoffTarget("other")}
-	if err := c.Validate(); err == nil {
-		t.Fatal("expected unsupported handoff target error")
+	for _, target := range []HandoffTarget{"other", "linux-steam"} {
+		c := Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: Starter, HandoffTarget: target}
+		if err := c.Validate(); err == nil {
+			t.Fatalf("expected unsupported handoff target error for %q", target)
+		}
 	}
 }
 
@@ -49,17 +51,6 @@ func TestValidateWindowsSteamRequiresSteamRoot(t *testing.T) {
 		t.Fatal("missing Steam root accepted")
 	}
 	c.SteamRoot = `C:\Program Files (x86)\Steam`
-	if err := c.Validate(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestValidateLinuxSteamNeedsNoSteamRoot(t *testing.T) {
-	c := Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: Starter, HandoffTarget: HandoffLinuxSteam}
-	if err := c.Validate(); err != nil {
-		t.Fatalf("linux-steam without steam_root: %v", err)
-	}
-	c.SteamRoot = "/home/rufi/.local/share/Steam"
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}

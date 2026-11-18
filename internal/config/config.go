@@ -17,7 +17,6 @@ const (
 	Pro                 Plan          = "pro"
 	HandoffNone         HandoffTarget = "off"
 	HandoffAccela       HandoffTarget = "accela"
-	HandoffLinuxSteam   HandoffTarget = "linux-steam"
 	HandoffWindowsSteam HandoffTarget = "windows-steam"
 )
 
@@ -47,7 +46,7 @@ func (c Config) Validate() error {
 		return nil
 	}
 	switch c.HandoffTarget {
-	case HandoffNone, HandoffAccela, HandoffLinuxSteam:
+	case HandoffNone, HandoffAccela:
 		return nil
 	case HandoffWindowsSteam:
 		if c.SteamRoot == "" {
