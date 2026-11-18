@@ -124,6 +124,10 @@ Search filters:
 
 In the menu, type the same filter words separated by commas, for example `no-dlc, available`.
 
+Anywhere that asks for an AppID, you can also paste a Steam store or SteamDB link, for example `https://store.steampowered.com/app/70/HalfLife/`.
+
+Prompts support line editing: Left and Right, Home and End, Backspace and Delete, Ctrl-A, Ctrl-E, Ctrl-U, Ctrl-K and Ctrl-W. Up and Down show your earlier entries.
+
 ### Examples
 
 ```sh

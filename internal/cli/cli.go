@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -69,25 +70,9 @@ type extendedService interface {
 // hideKeyInput is true when stdin is a terminal, so API key prompts can turn off echo.
 var hideKeyInput bool
 
-// echoOff is true while an API key prompt has terminal echo turned off.
-var echoOff atomic.Bool
-
 // downloads counts running downloads. Ctrl-C cancels a running download
 // cleanly; with none running, it restores the terminal and exits at once.
 var downloads atomic.Int32
-
-func setEcho(on bool) {
-	arg := "-echo"
-	if on {
-		arg = "echo"
-	}
-	// stty acts on its own stdin, so it must get the terminal.
-	cmd := exec.Command("stty", arg)
-	cmd.Stdin = os.Stdin
-	if cmd.Run() == nil {
-		echoOff.Store(!on)
-	}
-}
 
 // handleInterrupt makes Ctrl-C cancel ctx while a download runs, and exit
 // with status 130 otherwise. A second Ctrl-C always exits.
@@ -102,9 +87,7 @@ func handleInterrupt(cancel context.CancelFunc, errOut io.Writer) func() {
 				cancel()
 				continue
 			}
-			if echoOff.Load() {
-				setEcho(true)
-			}
+			restoreTerminal()
 			fmt.Fprintln(errOut, "\ncanceled")
 			os.Exit(130)
 		}
@@ -153,6 +136,10 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	}
 	if f, ok := in.(*os.File); ok && isTerminal(f) {
 		hideKeyInput = true
+		if runtime.GOOS != "windows" && saveTerminal() {
+			lineEdit = true
+			in = bufio.NewReader(f) // one shared reader, so no typed input is lost
+		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -239,11 +226,11 @@ func expandHome(p string) string {
 func readAPIKey(input io.Reader, out io.Writer) (string, error) {
 	fmt.Fprint(out, "API key: ")
 	if hideKeyInput {
-		if setEcho(false); echoOff.Load() {
+		if setEcho(false); termDirty.Load() {
 			defer func() { setEcho(true); fmt.Fprintln(out) }()
 		}
 	}
-	return readLineFrom(input, out, "")
+	return plainLine(input) // no line editor: it would draw the hidden key
 }
 func isTerminal(f *os.File) bool {
 	i, err := f.Stat()
@@ -253,8 +240,7 @@ func readLine(r *bufio.Reader, out io.Writer, prompt string) (string, error) {
 	if prompt != "" {
 		fmt.Fprint(out, prompt)
 	}
-	s, err := r.ReadString('\n')
-	return strings.TrimRight(s, "\r\n"), err
+	return readInputLine(r)
 }
 
 func readLineFrom(in io.Reader, out io.Writer, prompt string) (string, error) {
@@ -287,6 +273,10 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	cmd, rest := args[0], args[1:]
 	switch cmd {
+	case "info", "check", "lua", "request":
+		rest = appIDsFrom(rest)
+	}
+	switch cmd {
 	case "search":
 		flags, pos, err := parseArgs(rest, map[string]bool{"dlc": false, "no-dlc": false, "drm": false, "no-drm": false, "available": false, "limit": true})
 		if err != nil {
@@ -305,6 +295,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if err != nil {
 			return err
 		}
+		ids = appIDsFrom(ids)
 		if err := checkIDs(ids); err != nil {
 			return errors.New("usage: dbox download [--zip [--merge]] <appid>...: " + err.Error())
 		}
@@ -488,6 +479,27 @@ func validAppID(id string) bool {
 	return true
 }
 
+// appIDFrom accepts a bare AppID or a Steam store or SteamDB link that contains /app/<id>.
+func appIDFrom(s string) string {
+	s = strings.TrimSpace(s)
+	if _, rest, ok := strings.Cut(s, "/app/"); ok {
+		end := 0
+		for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+			end++
+		}
+		return rest[:end]
+	}
+	return s
+}
+
+func appIDsFrom(ids []string) []string {
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = appIDFrom(id)
+	}
+	return out
+}
+
 func checkIDs(ids []string) error {
 	if len(ids) == 0 {
 		return errors.New("at least one AppID is required")
@@ -609,7 +621,7 @@ func (ss *session) askID(text string) (string, bool, error) {
 	if err != nil || id == "" {
 		return "", false, err
 	}
-	if !validAppID(id) {
+	if id = appIDFrom(id); !validAppID(id) {
 		return "", false, fmt.Errorf("%q is not a Steam AppID", id)
 	}
 	return id, true, nil
@@ -1421,7 +1433,7 @@ func clearScreen(out io.Writer) {
 }
 
 func splitIDs(text string) []string {
-	return strings.FieldsFunc(text, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	return appIDsFrom(strings.FieldsFunc(text, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }))
 }
 
 // readSelection reads a 1-based choice. ok is false when the user leaves it blank.
@@ -1438,6 +1450,13 @@ func (ss *session) readSelection(n int, what string) (int, bool, error) {
 }
 
 func readInputLine(in io.Reader) (string, error) {
+	if r, ok := in.(*bufio.Reader); ok && lineEdit {
+		return editLine(r, os.Stdout)
+	}
+	return plainLine(in)
+}
+
+func plainLine(in io.Reader) (string, error) {
 	if r, ok := in.(*bufio.Reader); ok {
 		line, err := r.ReadString('\n')
 		return strings.TrimRight(line, "\r\n"), err
