@@ -24,6 +24,7 @@ type App struct {
 	Config  config.Config
 	Client  *api.Client
 	History *history.Store
+	catalog *catalog
 	// Progress, when set, receives the number of bytes saved by each write.
 	Progress func(n int64)
 }
@@ -39,6 +40,9 @@ func New(cfg config.Config, h *http.Client) *App {
 	a := NewWithClient(cfg, DefaultBaseURL, h)
 	if path, err := config.HistoryPath(); err == nil {
 		a.History = history.New(path, 100)
+	}
+	if dir, err := os.UserCacheDir(); err == nil {
+		a.catalog = newCatalog(filepath.Join(dir, "dbox", "catalog.json"))
 	}
 	return a
 }

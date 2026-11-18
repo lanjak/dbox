@@ -314,6 +314,14 @@ func (c *Client) List(ctx context.Context, id string) (List, error) {
 	return out.Data, err
 }
 
+// GameList writes the full catalog JSON (every AppID and name) to dst. The
+// API does not count this call against the rate limit, so it skips the limiter.
+func (c *Client) GameList(ctx context.Context, dst io.Writer) error {
+	free := *c
+	free.Limiter = nil
+	return free.request(ctx, http.MethodGet, "/api/gamelist/games", nil, dst, DownloadTimeout)
+}
+
 func (c *Client) DownloadGame(ctx context.Context, appID string, dst io.Writer) error {
 	return c.request(ctx, http.MethodGet, "/api/direct-download?"+url.Values{"appid": {appID}}.Encode(), nil, dst, DownloadTimeout)
 }

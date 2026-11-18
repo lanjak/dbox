@@ -156,7 +156,11 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	} else if err != nil {
 		return fmt.Errorf("load config %s: %w (fix the file, or delete it to run setup again)", p, err)
 	}
-	err = run(ctx, args, in, out, errOut, app.New(c, nil), c)
+	a := app.New(c, nil)
+	if len(args) == 0 || args[0] == "search" {
+		a.RefreshCatalog(ctx) // background; the close-match search uses it
+	}
+	err = run(ctx, args, in, out, errOut, a, c)
 	if ctx.Err() != nil {
 		return context.Canceled
 	}
@@ -697,7 +701,11 @@ func (ss *session) search(req api.SearchRequest) error {
 	}
 	clearScreen(ss.out)
 	if result.Approximate && len(result.Games) > 0 {
-		ss.ui.warn("No name contains %q. These are close:", req.SearchTerm)
+		note := ""
+		if req.FilterDLC != "" || req.FilterProtection != "" || req.FilterAvailability {
+			note = " Filters do not apply to close matches."
+		}
+		ss.ui.warn("No name contains %q. These are close:%s", req.SearchTerm, note)
 	}
 	return ss.chooseGame(result)
 }
@@ -730,6 +738,12 @@ func (ss *session) chooseGame(r api.SearchResponse) error {
 		return err
 	}
 	g := r.Games[i]
+	if x, ok := ss.s.(extendedService); ok && r.Approximate {
+		// Close matches come from the game list, which has only AppIDs and names.
+		if d, err := x.GameDetails(ss.ctx, string(g.AppID)); err == nil {
+			g = d.Game
+		}
+	}
 	clearScreen(ss.out)
 	ss.renderImage(g.HeaderImageURL)
 	ss.printGameDetails(g)

@@ -124,7 +124,7 @@ Search filters:
 
 In the menu, type the same filter words separated by commas, for example `no-dlc, available`.
 
-The DepotBox search matches only names that contain your exact text. When that finds nothing, `dbox` tries some broader searches and shows the names that are close to your text, so `fresh woman` still finds "FreshWomen" and `elden rign` finds "ELDEN RING".
+The DepotBox search matches only names that contain your exact text. When that finds nothing, `dbox` looks in its saved copy of the DepotBox game list and shows the names that are close to your text. For example, `fresh woman` finds "FreshWomen" and `cyberpunk 2078` finds "Cyberpunk 2077". This uses no requests from your limit.
 
 Anywhere that asks for an AppID, you can also paste a Steam store or SteamDB link, for example `https://store.steampowered.com/app/70/HalfLife/`.
 
@@ -162,6 +162,7 @@ Fix ZIPs are never handed off, because they patch game files and are not depot p
 | --- | --- |
 | Settings | `~/.config/dbox/config.json` on Linux, `~/Library/Application Support/dbox/` on macOS, `%AppData%\dbox\` on Windows |
 | History | `history.json` in the same folder (last 100 entries) |
+| Game list | `~/.cache/dbox/catalog.json` on Linux (about 8 MB). `dbox` downloads it again in the background when it is more than one day old. This download does not count against your rate limit. |
 | Downloads | The download directory that you set |
 
 The settings file holds your API key. On Linux, macOS and FreeBSD, `dbox` makes it readable only by you (mode `0600`). The key goes only to `https://depotbox.lol` in the `X-API-Key` header. `dbox` never prints it, never writes it to history, and does not follow redirects to other hosts.
