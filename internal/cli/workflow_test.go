@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rufi/dbox/internal/api"
-	"github.com/rufi/dbox/internal/config"
-	"github.com/rufi/dbox/internal/download"
+	"git.lanjak.net/rufi/dbox/internal/api"
+	"git.lanjak.net/rufi/dbox/internal/config"
+	"git.lanjak.net/rufi/dbox/internal/download"
 )
 
 type fakeService struct {
@@ -61,7 +61,7 @@ func (f *fakeService) Search(context.Context, string) (api.SearchResponse, error
 }
 func (f *fakeService) SearchWithFilters(_ context.Context, req api.SearchRequest) (api.SearchResponse, error) {
 	f.searchReq = req
-	return api.SearchResponse{Games: []api.Game{{AppID: "70", Name: "Game"}}}, nil
+	return f.Search(context.Background(), req.SearchTerm)
 }
 func (f *fakeService) Fixes(_ context.Context, query, tags string) (api.FixesResponse, error) {
 	f.fixQuery = query
@@ -123,10 +123,10 @@ func TestExistingSearchDownloadHandsOffWhenEnabled(t *testing.T) {
 func TestNoArgumentMenuLoopsUntilExit(t *testing.T) {
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("6\n"), &out, &out, f, config.Config{}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("q\n"), &out, &out, f, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "1. Search games") || !strings.Contains(out.String(), "6. Exit") {
+	if !strings.Contains(out.String(), "1. Search games") || !strings.Contains(out.String(), "q. Quit") {
 		t.Fatalf("menu output: %s", out.String())
 	}
 }
@@ -134,7 +134,7 @@ func TestNoArgumentMenuLoopsUntilExit(t *testing.T) {
 func TestMenuPassesFixTags(t *testing.T) {
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("3\nquery\nonline,offline\n1\nn\n6\n"), &out, &out, f, config.Config{}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("5\nquery\nonline,offline\n1\nn\nq\n"), &out, &out, f, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
 	if f.fixQuery != "query" || f.fixTags != "online,offline" {
@@ -146,7 +146,7 @@ func TestMenuConfirmationLeavesNextCommandForMenu(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("1\nGame\n\n1\nn\n5\n7\n6\n"), &out, &out, f, config.Config{APIKey: "key", DownloadDir: "/tmp", Plan: config.Starter}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("1\nGame\n\n1\nn\nc\n0\nq\n"), &out, &out, f, config.Config{APIKey: "key", DownloadDir: "/tmp", Plan: config.Starter}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "dbox", "config.json")); err != nil {
@@ -157,10 +157,10 @@ func TestMenuConfirmationLeavesNextCommandForMenu(t *testing.T) {
 func TestMenuPassesUserSearchFilters(t *testing.T) {
 	f := &fakeService{}
 	var out strings.Builder
-	if err := RunWithService(nil, strings.NewReader("1\nGame\ndlc,available,protection=online\n1\nn\n6\n"), &out, &out, f, config.Config{}); err != nil {
+	if err := RunWithService(nil, strings.NewReader("1\nGame\ndlc,available,protection=require\n1\nn\nq\n"), &out, &out, f, config.Config{}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.searchReq.FilterDLC || !f.searchReq.FilterAvailability || f.searchReq.FilterProtection != "online" {
+	if f.searchReq.FilterDLC != "only" || !f.searchReq.FilterAvailability || f.searchReq.FilterProtection != "require" {
 		t.Fatalf("search filters: %#v", f.searchReq)
 	}
 }
@@ -174,7 +174,7 @@ func TestConfigViewDoesNotReadInput(t *testing.T) {
 	if err := RunWithService([]string{"config"}, unreadableInput{}, &out, &out, &fakeService{}, config.Config{DownloadDir: "/tmp", Plan: config.Starter}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "API key: configured") {
+	if !strings.Contains(out.String(), "configured") {
 		t.Fatal(out.String())
 	}
 }

@@ -43,7 +43,7 @@ func TestClientAllowsSameOriginRedirect(t *testing.T) {
 	defer s.Close()
 	c := New(s.URL, "test-key", s.Client())
 	var got SearchResponse
-	if err := c.request(context.Background(), http.MethodGet, "/start", nil, &got); err != nil {
+	if err := c.request(context.Background(), http.MethodGet, "/start", nil, &got, RequestTimeout); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -93,7 +93,7 @@ func TestFixesEncodesQueryAndDownloadUsesExactHeader(t *testing.T) {
 			if r.URL.Query().Get("tag") != "online" || r.URL.Query().Get("q") != "A B" {
 				t.Errorf("bad query: %s", r.URL.RawQuery)
 			}
-			io.WriteString(w, `{"fixes":[{"id":"f1","file":"fix.zip","name":"Fix"}]}`)
+			io.WriteString(w, `{"games":[{"appid":70,"name":"Fix","fixes":[{"id":"f1","downloadName":"fix.zip","filename":"fix.zip","size":"1 MB","tags":["online"]}]}]}`)
 			return
 		}
 		if r.Method != http.MethodGet || r.URL.Path != "/api/direct-download" || r.URL.Query().Get("appid") != "70" || r.Header.Get("X-API-Key") != "test-key" {

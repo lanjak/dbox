@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rufi/dbox/internal/config"
+	"git.lanjak.net/rufi/dbox/internal/config"
 )
 
 type Limiter struct {

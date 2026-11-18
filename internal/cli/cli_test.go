@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"git.lanjak.net/rufi/dbox/internal/config"
 )
 
 func TestClearScreenWritesTerminalClearSequence(t *testing.T) {
@@ -20,4 +23,8 @@ func TestRunWithNoArgumentsRequiresConfiguration(t *testing.T) {
 	if err := Run(nil, strings.NewReader(""), io.Discard, io.Discard); err == nil {
 		t.Fatal("expected configuration error")
 	}
+}
+
+func testSession(out *strings.Builder, c config.Config) *session {
+	return &session{ctx: context.Background(), out: out, errOut: out, c: c, ui: newUI(out, out)}
 }

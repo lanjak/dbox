@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/rufi/dbox/internal/config"
+	"git.lanjak.net/rufi/dbox/internal/config"
 )
 
 func CommandFor(target config.HandoffTarget, override string) string {

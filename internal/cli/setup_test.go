@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/rufi/dbox/internal/config"
+	"git.lanjak.net/rufi/dbox/internal/config"
 	"io"
 	"path/filepath"
 	"strings"
@@ -46,7 +46,7 @@ func TestConfigEditorChangesOnlySelectedSetting(t *testing.T) {
 	}
 	newDir := t.TempDir()
 	var out strings.Builder
-	got, err := configCommand(strings.NewReader("2\n"+newDir+"\n7\n"), &out, c, true)
+	got, err := testSession(&out, c).configCommand(strings.NewReader("2\n"+newDir+"\n0\n"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestConfigEditorChangesOnlySelectedSetting(t *testing.T) {
 	if got.APIKey != c.APIKey || got.Plan != c.Plan || got.HandoffTarget != c.HandoffTarget || got.HandoffLibrary != c.HandoffLibrary || got.HandoffCommand != c.HandoffCommand {
 		t.Fatalf("unselected settings changed: got %#v, want %#v", got, c)
 	}
-	if !strings.Contains(out.String(), "1. API key") || !strings.Contains(out.String(), "7. Done") {
+	if !strings.Contains(out.String(), "1. API key") || !strings.Contains(out.String(), "0. Save and return") {
 		t.Fatalf("config menu missing: %q", out.String())
 	}
 }
@@ -65,7 +65,7 @@ func TestConfigEditorSetsSteamRootWithoutChangingKey(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	c := config.Config{APIKey: "secret", DownloadDir: t.TempDir(), Plan: config.Pro}
 	var out strings.Builder
-	got, err := configCommand(strings.NewReader("8\nC:\\Steam\n4\nwindows-steam\n7\n"), &out, c, true)
+	got, err := testSession(&out, c).configCommand(strings.NewReader("7\nC:\\Steam\n4\nwindows-steam\n0\n"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,10 +78,10 @@ func TestConfigEditorClearsScreenWhenDone(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	c := config.Config{APIKey: "key", DownloadDir: t.TempDir(), Plan: config.Starter}
 	var out strings.Builder
-	if _, err := configCommand(strings.NewReader("7\n"), &out, c, true); err != nil {
+	if _, err := testSession(&out, c).configCommand(strings.NewReader("0\n"), true); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(out.String(), "\033[2J\033[H") {
+	if !strings.HasSuffix(out.String(), "\033[2J\033[Hok: Configuration saved\n") {
 		t.Fatalf("config exit did not clear screen: %q", out.String())
 	}
 }

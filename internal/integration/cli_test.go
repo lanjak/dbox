@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rufi/dbox/internal/api"
-	"github.com/rufi/dbox/internal/app"
-	"github.com/rufi/dbox/internal/cli"
-	"github.com/rufi/dbox/internal/config"
+	"git.lanjak.net/rufi/dbox/internal/api"
+	"git.lanjak.net/rufi/dbox/internal/app"
+	"git.lanjak.net/rufi/dbox/internal/cli"
+	"git.lanjak.net/rufi/dbox/internal/config"
 )
 
 func TestFirstRunSetupAndSearchDownloadAgainstServer(t *testing.T) {
@@ -71,7 +71,7 @@ func TestFixesDownloadAndDirectAppIDAgainstServer(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/game-fixes":
 			fixQuery, fixTag = r.URL.Query().Get("q"), r.URL.Query().Get("tag")
-			io.WriteString(w, `{"fixes":[{"id":"f1","file":"fix.zip","name":"Fix"}]}`)
+			io.WriteString(w, `{"games":[{"appid":"70","name":"Fix","fixes":[{"id":"f1","downloadName":"fix.zip","filename":"fix.zip"}]}]}`)
 		case "/api/game-fixes/download":
 			if r.URL.Query().Get("id") != "f1" {
 				t.Errorf("wrong fix id: %s", r.URL.RawQuery)
@@ -132,7 +132,7 @@ func TestSearchSelectionShowsReturnedImageURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"https://example.test/header.jpg", "AppID:", "70", "DLC:                    Yes", "DRM notice:             DRM note", "External account note:  Account note"} {
+	for _, want := range []string{"https://example.test/header.jpg", "AppID            70", "DLC              Yes", "DRM notice       DRM note", "Account notice   Account note"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("%q missing from output: %q", want, text)
 		}
@@ -165,7 +165,7 @@ func TestMenuConfigChangeUpdatesActiveAppForLaterDownload(t *testing.T) {
 	}))
 	defer s.Close()
 	a := app.NewWithClient(config.Config{APIKey: "test-key", DownloadDir: oldDir, Plan: config.Starter}, s.URL, s.Client())
-	input := "5\n2\n" + newDir + "\n3\npro\n4\noff\n7\n2\n70\n6\n"
+	input := "c\n2\n" + newDir + "\n3\npro\n4\noff\n0\n2\n70\nq\n"
 	var out strings.Builder
 	if err := cli.RunWithService(nil, strings.NewReader(input), &out, &out, a, a.Config); err != nil {
 		t.Fatal(err)

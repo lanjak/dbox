@@ -1,3 +1,3 @@
-module github.com/rufi/dbox
+module git.lanjak.net/rufi/dbox
 
 go 1.27
