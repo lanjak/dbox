@@ -53,8 +53,8 @@ func TestInstallSteamZipPlacesLuaAndManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	for path, want := range map[string]string{
-		filepath.Join(root, "config", "stplug-in", "480.lua"):             "addappid(480)",
-		filepath.Join(root, "depotcache", "481_123456789012345.manifest"): "manifest data",
+		filepath.Join(root, "config", "stplug-in", "480.lua"):                          "addappid(480)",
+		filepath.Join(root, "steamapps", "depotcache", "481_123456789012345.manifest"): "manifest data",
 	} {
 		got, err := os.ReadFile(path)
 		if err != nil || string(got) != want {
@@ -126,17 +126,17 @@ func TestInstallSteamZipRejectsEmptyLuaBeforeWritingManifest(t *testing.T) {
 	if err == nil {
 		t.Fatal("empty Lua accepted")
 	}
-	if _, e := os.Stat(filepath.Join(root, "depotcache", "481_123.manifest")); !os.IsNotExist(e) {
+	if _, e := os.Stat(filepath.Join(root, "steamapps", "depotcache", "481_123.manifest")); !os.IsNotExist(e) {
 		t.Fatal("manifest was written despite empty Lua")
 	}
 }
 
 func TestInstallSteamZipRejectsConflictingManifestWithoutChangingLua(t *testing.T) {
 	root := makeSteam(t)
-	if err := os.MkdirAll(filepath.Join(root, "depotcache"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "steamapps", "depotcache"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "depotcache", "481_123.manifest"), []byte("old"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "steamapps", "depotcache", "481_123.manifest"), []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	err := InstallSteamZip(makeArchive(t, map[string]string{"480.lua": "new", "481_123.manifest": "conflict"}), root)
