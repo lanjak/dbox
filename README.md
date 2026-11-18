@@ -26,7 +26,7 @@ Select a game (1-3, Enter to go back): 2
 - **Community lists**: browse public lists and download a full list in one step.
 - **Game requests**: ask DepotBox to add a missing game, and follow the status of your requests.
 - **Usage**: your API usage and live DepotBox service statistics.
-- **Handoff**: send each new ZIP to ACCELA or [ASSella](https://github.com/niwia/ASSella) on Linux, or install the `.lua` and manifests into a Windows Steam folder.
+- **Handoff**: send each new ZIP to ACCELA or [ASSella](https://github.com/niwia/ASSella) on Linux, or install the `.lua` and manifests into the local Steam folder on macOS and Windows.
 - **Installed games**: list what is in your Steam libraries on Linux, macOS and Windows, and which of those dbox set up.
 - A live progress line, colour output, an interactive menu, and history of your last 100 actions.
 - Safe by design: downloads go to a temporary file first, existing files are never replaced, the API key is never printed, and requests stay inside your plan's rate limit.
@@ -160,11 +160,14 @@ When DepotBox does not have a game, `dbox` tells you and offers to send a reques
 | --- | --- |
 | `off` | Nothing. This is the default. |
 | `accela` | Starts `accela <zip>`, the same as when you drop the ZIP on ACCELA or [ASSella](https://github.com/niwia/ASSella), and that program does the rest. This is the flow on Linux: ASSella runs on Linux and SteamOS only. Set "Handoff command" if the launcher is not `accela` on your `PATH`. |
-| `windows-steam` | Copies the `.lua` to `<steam>/config/stplug-in` and the manifests to the `steamapps/depotcache` of the library that holds the game, or of the default library, under the Steam folder that you set as "Steam root" (the folder that contains `steam.exe`). An existing `.lua` is backed up first. |
+| `steam` | Installs into the local Steam folder on macOS and Windows, and on Linux too if you ask for it: the `.lua` goes to `<steam>/config/stplug-in` and the manifests to the `steamapps/depotcache` of the library that holds the game, or of the default library. An existing `.lua` is backed up first. |
+| `windows-steam` | The earlier name of `steam`. Still accepted, so an existing setting keeps working. |
 
-On macOS there is no ASSella and no client mod, so the useful targets are `off` and a custom command (`accela` with "Handoff command" set to your own script).
+`steam` finds the folder itself on Linux (`~/.steam/steam`, `~/.local/share/Steam`, Flatpak), macOS (`~/Library/Application Support/Steam`) and Windows (`%ProgramFiles(x86)%\Steam`), or uses "Steam root" when you set it. On macOS no client mod exists yet, so the files land where a mod would read them but Steam will not download the game until one does.
 
-`dbox installed` reads Steam's own `appmanifest` files on Linux, macOS and Windows, so it lists the games that Steam installed too. A game is marked `managed` when dbox downloaded it or when a client mod has a `.lua` for it. Steam handles updates and removal. On Windows, set "Steam root" first, because dbox cannot guess that path from another system.
+On Linux the usual flow is `accela`, because ASSella runs the whole process from the ZIP onwards there. It runs on Linux and SteamOS only.
+
+`dbox installed` reads Steam's own `appmanifest` files on Linux, macOS and Windows, so it lists the games that Steam installed too. A game is marked `managed` when dbox downloaded it or when a client mod has a `.lua` for it. Steam handles updates and removal.
 
 Fix ZIPs are never handed off, because they patch game files and are not depot packages. Use `dbox install <zip>` to hand off a ZIP that you already have.
 

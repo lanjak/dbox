@@ -13,10 +13,13 @@ type Plan string
 type HandoffTarget string
 
 const (
-	Starter             Plan          = "starter"
-	Pro                 Plan          = "pro"
-	HandoffNone         HandoffTarget = "off"
-	HandoffAccela       HandoffTarget = "accela"
+	Starter       Plan          = "starter"
+	Pro           Plan          = "pro"
+	HandoffNone   HandoffTarget = "off"
+	HandoffAccela HandoffTarget = "accela"
+	HandoffSteam  HandoffTarget = "steam"
+	// HandoffWindowsSteam is the earlier name of HandoffSteam, kept so that
+	// existing settings keep working.
 	HandoffWindowsSteam HandoffTarget = "windows-steam"
 )
 
@@ -46,12 +49,7 @@ func (c Config) Validate() error {
 		return nil
 	}
 	switch c.HandoffTarget {
-	case HandoffNone, HandoffAccela:
-		return nil
-	case HandoffWindowsSteam:
-		if c.SteamRoot == "" {
-			return errors.New("steam_root is required for windows-steam handoff")
-		}
+	case HandoffNone, HandoffAccela, HandoffSteam, HandoffWindowsSteam:
 		return nil
 	}
 	return fmt.Errorf("unsupported handoff target %q", c.HandoffTarget)

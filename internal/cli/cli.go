@@ -1404,7 +1404,7 @@ func (ss *session) configCommand(in io.Reader, edit bool) (config.Config, error)
 				c.Plan = config.Plan(strings.ToLower(value))
 			}
 		case "4":
-			if value, err = ask("Auto handoff (off/accela/windows-steam, Enter to keep current): "); err != nil {
+			if value, err = ask("Auto handoff (off/accela/steam, Enter to keep current): "); err != nil {
 				return c, err
 			}
 			if value != "" {

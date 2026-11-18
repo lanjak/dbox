@@ -23,8 +23,8 @@ var kvLine = regexp.MustCompile(`^\s*"([^"]+)"\s+"([^"]*)"`)
 var libraryPath = regexp.MustCompile(`^\s*"path"\s+"([^"]+)"`)
 
 // Root returns the Steam installation folder, the one that holds steamapps and
-// config. override wins when it is set; otherwise the usual native and Flatpak
-// locations are tried.
+// config. override wins when it is set; otherwise the usual locations of the
+// three platforms are tried.
 func Root(override string) (string, error) {
 	if o := strings.TrimSpace(override); o != "" {
 		root := filepath.Clean(o)
@@ -46,14 +46,22 @@ func Root(override string) (string, error) {
 }
 
 // candidates lists the Steam installation folders in the order they are tried.
+// A Windows installation is found through its program folder, and the misses
+// cost nothing because isRoot checks for steamapps.
 func candidates(home string) []string {
-	return []string{
+	dirs := []string{
 		filepath.Join(home, ".steam", "steam"),
 		filepath.Join(home, ".local", "share", "Steam"),
 		filepath.Join(home, ".steam", "root"),
 		filepath.Join(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"),
 		filepath.Join(home, "Library", "Application Support", "Steam"),
 	}
+	for _, env := range []string{"ProgramFiles(x86)", "ProgramFiles"} {
+		if dir := os.Getenv(env); dir != "" {
+			dirs = append(dirs, filepath.Join(dir, "Steam"))
+		}
+	}
+	return dirs
 }
 
 // isRoot reports whether dir is a Steam installation folder.

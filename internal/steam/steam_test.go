@@ -64,6 +64,19 @@ func TestRootFindsSteamOnMacOS(t *testing.T) {
 	}
 }
 
+func TestCandidatesIncludeTheWindowsProgramFolder(t *testing.T) {
+	t.Setenv("ProgramFiles(x86)", "/fake/programfiles")
+	found := false
+	for _, dir := range candidates("/home/x") {
+		if dir == filepath.Join("/fake/programfiles", "Steam") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Windows program folder missing")
+	}
+}
+
 func TestUnescapeVDFHandlesWindowsPaths(t *testing.T) {
 	if got := unescapeVDF(`C:\\Program Files (x86)\\Steam`); got != `C:\Program Files (x86)\Steam` {
 		t.Fatalf("got %q", got)

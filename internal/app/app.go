@@ -152,7 +152,7 @@ func (a *App) Handoff(path string) error {
 		return nil
 	}
 	switch a.Config.HandoffTarget {
-	case config.HandoffWindowsSteam:
+	case config.HandoffSteam, config.HandoffWindowsSteam:
 		return handoff.InstallSteamZip(path, a.Config.SteamRoot)
 	}
 	return handoff.Launch(a.Config.HandoffTarget, a.Config.HandoffCommand, path)

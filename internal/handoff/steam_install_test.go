@@ -8,10 +8,12 @@ import (
 	"testing"
 )
 
+// makeSteam builds a Steam installation folder. The only marker is steamapps,
+// which every platform has.
 func makeSteam(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "steam.exe"), []byte("test"), 0600); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "steamapps"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	return root
@@ -68,9 +70,6 @@ func TestInstallSteamZipPlacesLuaAndManifest(t *testing.T) {
 
 func TestInstallSteamZipUsesTheLibraryThatHoldsTheGame(t *testing.T) {
 	root := makeSteam(t)
-	if err := os.MkdirAll(filepath.Join(root, "steamapps"), 0700); err != nil {
-		t.Fatal(err)
-	}
 	other := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(other, "steamapps"), 0700); err != nil {
 		t.Fatal(err)
@@ -150,12 +149,36 @@ func TestInstallSteamZipRejectsDangerousOrAmbiguousArchiveBeforeWriting(t *testi
 }
 
 func TestInstallSteamZipRejectsMissingSteamOrLua(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	archive := makeArchive(t, map[string]string{"123_456.manifest": "data"})
 	if err := InstallSteamZip(archive, makeSteam(t)); err == nil {
 		t.Fatal("missing Lua accepted")
 	}
 	if err := InstallSteamZip(makeArchive(t, map[string]string{"480.lua": "a"}), t.TempDir()); err == nil {
-		t.Fatal("missing Steam executable accepted")
+		t.Fatal("missing Steam folder accepted")
+	}
+	if err := InstallSteamZip(makeArchive(t, map[string]string{"480.lua": "a"}), ""); err == nil || !strings.Contains(err.Error(), "no Steam installation found") {
+		t.Fatalf("missing installation accepted: %v", err)
+	}
+}
+
+func TestInstallSteamZipFindsSteamUnderHome(t *testing.T) {
+	for _, rel := range []string{
+		filepath.Join(".local", "share", "Steam"),
+		filepath.Join("Library", "Application Support", "Steam"),
+	} {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		root := filepath.Join(home, rel)
+		if err := os.MkdirAll(filepath.Join(root, "steamapps"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := InstallSteamZip(makeArchive(t, map[string]string{"480.lua": "addappid(480)"}), ""); err != nil {
+			t.Fatalf("%s: %v", rel, err)
+		}
+		if _, err := os.Stat(filepath.Join(root, "config", "stplug-in", "480.lua")); err != nil {
+			t.Fatalf("%s: %v", rel, err)
+		}
 	}
 }
 
