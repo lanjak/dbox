@@ -161,6 +161,12 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	} else if err != nil {
 		return fmt.Errorf("load config %s: %w (fix the file, or delete it to run setup again)", p, err)
 	}
+	// Only the interactive menu checks for updates; scripts and one-off commands never wait on it.
+	if len(args) == 0 && lineEdit {
+		if done, err := offerUpdate(ctx, in, out); done || err != nil {
+			return err
+		}
+	}
 	a := app.New(c, nil)
 	if len(args) == 0 || args[0] == "search" {
 		a.RefreshCatalog(ctx) // background; the close-match search uses it

@@ -64,6 +64,10 @@ curl -fsSL https://git.lanjak.net/rufi/dbox/raw/branch/main/install.sh | sh -s -
 
 If you download a macOS binary with a web browser instead of the installer, macOS marks it as quarantined and does not open it. Remove the mark with `xattr -d com.apple.quarantine dbox-darwin-arm64`. The installer does not need this step.
 
+### Updates
+
+When you open the menu, `dbox` checks for a new release. If there is one, it asks if you want to install it. If you answer yes, `dbox` runs the installer for that version, replaces itself, and stops; start it again to use the new version. If you answer no, the menu opens as usual. The check takes at most 2 seconds, and `dbox` skips it when the release server does not answer. Commands such as `dbox download` do not check.
+
 ### Windows
 
 Download `dbox-windows-amd64.exe` (or `dbox-windows-arm64.exe`) from the [releases page](https://git.lanjak.net/rufi/dbox/releases), rename it to `dbox.exe`, and put it in a folder on your `PATH`.
