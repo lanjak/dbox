@@ -2,6 +2,8 @@
 
 **DepotBox from your terminal.** Search the DepotBox catalog, download depot packages, Lua scripts and game fixes, browse community lists, and hand finished ZIPs to your installer. `dbox` is one small static binary with no dependencies.
 
+**Requirement: a DepotBox API key.** `dbox` does not work without one. Neither the website nor the Discord channel can replace it: the site gates every download behind a browser CAPTCHA, and the Discord flow runs through DepotBox's own bot, not through an interface that a terminal program can call. The key is free to create at [depotbox.lol](https://depotbox.lol).
+
 ```text
 $ dbox search --no-dlc half life
 3 result(s)
@@ -89,7 +91,7 @@ Run `dbox`. The first run asks for three settings:
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| API key | none | From your DepotBox dashboard. The input is hidden. |
+| API key | none (required) | From your DepotBox dashboard. The input is hidden. `dbox` refuses to start without it. |
 | Download directory | `~/Downloads/dbox` | Created when missing. |
 | Plan | `starter` | `starter` (60 requests a minute) or `pro` (120). |
 
@@ -204,6 +206,7 @@ The settings file holds your API key. On Linux, macOS and FreeBSD, `dbox` makes 
 | Problem | Fix |
 | --- | --- |
 | `dbox: command not found` | Add the install folder to your `PATH`. The installer shows the line to add. |
+| `API key is required` | `dbox` needs a DepotBox API key. Create one at depotbox.lol and run `dbox config edit`. |
 | `load config ...` error | The settings file is damaged. Correct it, or delete it and run `dbox` again to repeat the setup. |
 | `unsupported handoff target` | The settings file names a target that no longer exists, for example `linux-steam`. Set `handoff_target` to `accela` or `steam`, or delete the file. |
 | `DepotBox API error 403` | The key is not valid, not yet approved, or limited to other IP addresses. Look at your DepotBox dashboard. |
