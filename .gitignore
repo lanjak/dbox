@@ -1,2 +1,19 @@
 .worktrees/
 
+# build output
+/dbox
+/dbox.exe
+dist/
+
+# local data and secrets
+*.zip
+config.json
+history.json
+.env
+.env.*
+
+# editor and agent files
+.idea
+.vscode
+.claude
+.mcp.json

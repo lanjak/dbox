@@ -113,7 +113,7 @@ func (c *Client) Fixes(ctx context.Context, query, tags string) (FixesResponse, 
 	return out, err
 }
 func (c *Client) DownloadGame(ctx context.Context, appID string, dst io.Writer) error {
-	return c.json(ctx, http.MethodPost, "/api/direct-download", map[string]string{"appid": appID}, dst)
+	return c.request(ctx, http.MethodGet, "/api/direct-download?"+url.Values{"appid": {appID}}.Encode(), nil, dst)
 }
 func (c *Client) DownloadFix(ctx context.Context, id, file string, dst io.Writer) error {
 	q := url.Values{}

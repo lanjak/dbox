@@ -78,11 +78,7 @@ func TestFixesDownloadAndDirectAppIDAgainstServer(t *testing.T) {
 			}
 			io.WriteString(w, "fix")
 		case "/api/direct-download":
-			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatal(err)
-			}
-			downloadedID = body["appid"]
+			downloadedID = r.URL.Query().Get("appid")
 			io.WriteString(w, "game")
 		default:
 			http.NotFound(w, r)
@@ -111,12 +107,9 @@ func TestDirectDownloadAcceptsMultipleAppIDsSequentially(t *testing.T) {
 	dir := t.TempDir()
 	var downloaded []string
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatal(err)
-		}
-		downloaded = append(downloaded, body["appid"])
-		io.WriteString(w, body["appid"])
+		id := r.URL.Query().Get("appid")
+		downloaded = append(downloaded, id)
+		io.WriteString(w, id)
 	}))
 	defer s.Close()
 	a := app.NewWithClient(config.Config{APIKey: "test-key", DownloadDir: dir, Plan: config.Starter}, s.URL, s.Client())

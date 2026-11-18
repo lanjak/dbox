@@ -96,7 +96,7 @@ func TestFixesEncodesQueryAndDownloadUsesExactHeader(t *testing.T) {
 			io.WriteString(w, `{"fixes":[{"id":"f1","file":"fix.zip","name":"Fix"}]}`)
 			return
 		}
-		if r.URL.Path != "/api/direct-download" || r.Header.Get("X-API-Key") != "test-key" {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/direct-download" || r.URL.Query().Get("appid") != "70" || r.Header.Get("X-API-Key") != "test-key" {
 			t.Errorf("bad download request")
 		}
 		seen++

@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Base URL: `https://depotbox.org`.
+- Base URL: `https://depotbox.lol`.
 - Every API request sends the configured key in `X-API-Key`.
 - Never hardcode, print, or log a real API key.
 - Store config as user-private JSON; use mode `0600` on Unix-like systems.

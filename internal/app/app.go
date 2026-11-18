@@ -31,7 +31,7 @@ func NewWithClient(cfg config.Config, baseURL string, h *http.Client) *App {
 }
 
 func New(cfg config.Config, h *http.Client) *App {
-	a := NewWithClient(cfg, "https://depotbox.org", h)
+	a := NewWithClient(cfg, "https://depotbox.lol", h)
 	if path, err := config.HistoryPath(); err == nil {
 		a.History = history.New(path, 100)
 	}

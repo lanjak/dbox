@@ -43,7 +43,7 @@ Configuration validation rejects an empty key, unsupported plan, and unusable do
 
 ## API client
 
-The API base URL is `https://depotbox.org`. Every request sends the configured key in the `X-API-Key` header.
+The API base URL is `https://depotbox.lol`. Every request sends the configured key in the `X-API-Key` header.
 
 Endpoints:
 
