@@ -9,14 +9,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 
 	"git.lanjak.net/rufi/dbox/internal/api"
 )
-
-// catalogMaxAge is how old the saved game list can get before dbox downloads it again.
-const catalogMaxAge = 24 * time.Hour
 
 type catalogGame struct {
 	AppID api.AppID `json:"appid"`
@@ -31,20 +27,35 @@ type catalog struct {
 	mu      sync.Mutex
 	running chan struct{} // closed when the current download ends
 	games   []catalogGame
+	err     error // result of the last download
 }
 
 func newCatalog(path string) *catalog { return &catalog{path: path} }
 
-// RefreshCatalog downloads the game list in the background when the saved
-// copy is missing or older than catalogMaxAge.
+// RefreshCatalog downloads a new game list in the background.
 func (a *App) RefreshCatalog(ctx context.Context) {
+	if a.catalog != nil {
+		a.catalog.download(ctx, a.Client)
+	}
+}
+
+// UpdateGameList downloads a new game list now and returns its size. If a
+// download is already running, it waits for that one.
+func (a *App) UpdateGameList(ctx context.Context) (int, error) {
 	if a.catalog == nil {
-		return
+		return 0, fmt.Errorf("no cache folder for the game list")
 	}
-	if fi, err := os.Stat(a.catalog.path); err == nil && time.Since(fi.ModTime()) < catalogMaxAge {
-		return
+	select {
+	case <-a.catalog.download(ctx, a.Client):
+	case <-ctx.Done():
+		return 0, ctx.Err()
 	}
-	a.catalog.download(ctx, a.Client)
+	a.catalog.mu.Lock()
+	defer a.catalog.mu.Unlock()
+	if a.catalog.err != nil {
+		return 0, a.catalog.err
+	}
+	return len(a.catalog.games), nil
 }
 
 // download starts one download at a time and returns a channel that closes when it ends.
@@ -61,6 +72,7 @@ func (c *catalog) download(ctx context.Context, client *api.Client) <-chan struc
 		games, err := fetchCatalog(ctx, client, c.path)
 		c.mu.Lock()
 		c.running = nil
+		c.err = err
 		if err == nil {
 			c.games = games
 		}
@@ -125,33 +137,30 @@ func readCatalog(path string) ([]catalogGame, error) {
 // saved copy, or downloads the list when there is none.
 func (c *catalog) load(ctx context.Context, client *api.Client) ([]catalogGame, error) {
 	c.mu.Lock()
-	var running <-chan struct{}
-	if c.running != nil {
-		running = c.running
-	}
 	games := c.games
 	c.mu.Unlock()
-	if running == nil && games != nil {
+	if games != nil {
 		return games, nil
 	}
-	if running == nil {
-		if games, err := readCatalog(c.path); err == nil {
-			c.mu.Lock()
+	// A saved copy is good enough; a refresh that is running replaces it later.
+	if games, err := readCatalog(c.path); err == nil {
+		c.mu.Lock()
+		if c.games == nil {
 			c.games = games
-			c.mu.Unlock()
-			return games, nil
 		}
-		running = c.download(ctx, client)
+		games = c.games
+		c.mu.Unlock()
+		return games, nil
 	}
 	select {
-	case <-running:
+	case <-c.download(ctx, client):
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.games == nil {
-		return nil, fmt.Errorf("game list is not available")
+		return nil, fmt.Errorf("game list is not available: %v", c.err)
 	}
 	return c.games, nil
 }

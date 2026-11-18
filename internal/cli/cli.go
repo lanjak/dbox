@@ -65,6 +65,7 @@ type extendedService interface {
 	GameRequests(context.Context) ([]api.GameRequest, error)
 	Lists(context.Context, int) (api.ListsPage, error)
 	List(context.Context, string) (api.List, error)
+	UpdateGameList(context.Context) (int, error)
 }
 
 // hideKeyInput is true when stdin is a terminal, so API key prompts can turn off echo.
@@ -117,6 +118,9 @@ Usage:
   dbox request <appid>              ask DepotBox to add a missing game
   dbox requests                     show your game requests
   dbox usage                        your API usage and service stats
+  dbox refresh                      download the DepotBox game list now
+                                    (used for close matches; free, and
+                                    also refreshed when dbox starts)
   dbox install <archive.zip>        hand a ZIP to the configured handoff target
   dbox history [term]               recent searches and downloads
   dbox config [edit]                show or change settings
@@ -356,6 +360,8 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		return ss.requests()
 	case "usage", "stats":
 		return ss.usage()
+	case "refresh":
+		return ss.refreshGameList()
 	case "install":
 		if len(rest) != 1 {
 			return errors.New("usage: dbox install <archive.zip>")
@@ -536,6 +542,7 @@ var menuItems = []struct{ key, label string }{
 	{"7", "Request a missing game"},
 	{"8", "Usage and service stats"},
 	{"9", "History"},
+	{"r", "Refresh game list"},
 	{"c", "Config"},
 	{"q", "Quit"},
 }
@@ -585,6 +592,8 @@ func (ss *session) menu() error {
 		case "9":
 			clearScreen(ss.out)
 			e = ss.showHistory("")
+		case "r":
+			e = ss.refreshGameList()
 		case "c":
 			clearScreen(ss.out)
 			updated, err := ss.configCommand(r, true)
@@ -1236,6 +1245,21 @@ func (ss *session) usage() error {
 		ss.ui.field("Top today", fmt.Sprintf("%s (%s), %d downloads", st.MostPopular.Name, st.MostPopular.AppID, st.MostPopular.Downloads))
 	}
 	ss.ui.field("Public lists", humanCount(st.PublicLists))
+	return nil
+}
+
+func (ss *session) refreshGameList() error {
+	x, err := ss.ext()
+	if err != nil {
+		return err
+	}
+	act := ss.ui.start("Downloading the DepotBox game list")
+	n, err := x.UpdateGameList(ss.ctx)
+	summary := act.end()
+	if err != nil {
+		return err
+	}
+	ss.ui.ok("Game list updated: %s games %s", humanCount(n), ss.ui.dim("("+strings.TrimPrefix(summary, "0 B in ")+")"))
 	return nil
 }
 

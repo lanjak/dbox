@@ -79,17 +79,17 @@ func TestSearchFallsBackToCloseMatchesFromGameList(t *testing.T) {
 	}
 }
 
-func TestRefreshCatalogSkipsFreshCopyAndRejectsIncompleteList(t *testing.T) {
+func TestUpdateGameListDownloadsEachTimeAndRejectsIncompleteList(t *testing.T) {
 	var listCalls atomic.Int32
-	s := fakeDepotBox(t, &listCalls, "Game")
+	s := fakeDepotBox(t, &listCalls, "Game", "Other")
 	defer s.Close()
 	a := NewWithClient(config.Config{APIKey: "k", DownloadDir: t.TempDir(), Plan: config.Pro}, s.URL, s.Client())
 	p := filepath.Join(t.TempDir(), "catalog.json")
 	a.catalog = newCatalog(p)
-	<-a.catalog.download(context.Background(), a.Client)
-	a.RefreshCatalog(context.Background()) // copy is new: no second download
-	if listCalls.Load() != 1 {
-		t.Fatalf("downloads %d", listCalls.Load())
+	for i := 1; i <= 2; i++ {
+		if n, err := a.UpdateGameList(context.Background()); err != nil || n != 2 || listCalls.Load() != int32(i) {
+			t.Fatalf("update %d: n=%d err=%v downloads=%d", i, n, err, listCalls.Load())
+		}
 	}
 	os.WriteFile(p, []byte(`{"total":5,"count":2,"games":[{"appid":1,"name":"A"},{"appid":2,"name":"B"}]}`), 0600)
 	if _, err := readCatalog(p); err == nil {

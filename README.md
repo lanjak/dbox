@@ -108,6 +108,7 @@ Run `dbox` with no arguments for the interactive menu. Each menu item is also a 
 | `dbox request <appid>` | Ask DepotBox to add a missing game. |
 | `dbox requests` | Show your game requests and their status. |
 | `dbox usage` | Show your API usage and DepotBox service statistics. |
+| `dbox refresh` | Download the DepotBox game list now. `dbox` uses it to find close matches. |
 | `dbox install <archive.zip>` | Send a ZIP to the handoff target. |
 | `dbox history [term]` | Show recent searches and downloads. |
 | `dbox config [edit]` | Show or change settings. |
@@ -162,7 +163,7 @@ Fix ZIPs are never handed off, because they patch game files and are not depot p
 | --- | --- |
 | Settings | `~/.config/dbox/config.json` on Linux, `~/Library/Application Support/dbox/` on macOS, `%AppData%\dbox\` on Windows |
 | History | `history.json` in the same folder (last 100 entries) |
-| Game list | `~/.cache/dbox/catalog.json` on Linux (about 8 MB). `dbox` downloads it again in the background when it is more than one day old. This download does not count against your rate limit. |
+| Game list | `~/.cache/dbox/catalog.json` on Linux (about 8 MB). `dbox` downloads a new copy in the background each time you open the menu or search, and when you run `dbox refresh`. This download does not count against your rate limit. |
 | Downloads | The download directory that you set |
 
 The settings file holds your API key. On Linux, macOS and FreeBSD, `dbox` makes it readable only by you (mode `0600`). The key goes only to `https://depotbox.lol` in the `X-API-Key` header. `dbox` never prints it, never writes it to history, and does not follow redirects to other hosts.
