@@ -100,6 +100,20 @@ func (a *App) DownloadFix(ctx context.Context, f api.Fix) (string, error) {
 	return p, err
 }
 
+// Game returns the search data for one AppID, which has the header image and
+// the DLC and DRM flags. The details call is the fallback; it fails for some games.
+func (a *App) Game(ctx context.Context, id string) (api.Game, error) {
+	if r, err := a.Client.Search(ctx, api.SearchRequest{SearchTerm: id, Limit: 10}); err == nil {
+		for _, g := range r.Games {
+			if string(g.AppID) == id {
+				return g, nil
+			}
+		}
+	}
+	d, err := a.Client.GameDetails(ctx, id)
+	return d.Game, err
+}
+
 func (a *App) GameDetails(ctx context.Context, id string) (api.GameDetails, error) {
 	return a.Client.GameDetails(ctx, id)
 }

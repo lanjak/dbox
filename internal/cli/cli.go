@@ -66,6 +66,7 @@ type extendedService interface {
 	Lists(context.Context, int) (api.ListsPage, error)
 	List(context.Context, string) (api.List, error)
 	UpdateGameList(context.Context) (int, error)
+	Game(context.Context, string) (api.Game, error)
 }
 
 // hideKeyInput is true when stdin is a terminal, so API key prompts can turn off echo.
@@ -175,6 +176,7 @@ func Setup(in io.Reader, out io.Writer, path string) (config.Config, error) {
 	u := newUI(out, out)
 	u.title("Welcome to dbox - first-time setup")
 	fmt.Fprintln(out, "Get an API key from your DepotBox dashboard: https://depotbox.lol")
+	fmt.Fprintln(out)
 	key, err := readAPIKey(in, out)
 	if err != nil {
 		return config.Config{}, errors.New("setup requires API key, download directory, and plan")
@@ -380,7 +382,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		ss.ui.ok("Installed: %s", rest[0])
 		return nil
 	case "history":
-		return ss.showHistory(strings.Join(rest, " "))
+		return ss.showHistory(strings.Join(rest, " "), 0)
 	case "config":
 		if len(rest) > 1 || (len(rest) == 1 && rest[0] != "edit") {
 			return errors.New("usage: dbox config [edit]")
@@ -572,29 +574,31 @@ func (ss *session) menu() error {
 		case "2":
 			e = ss.menuDownload()
 		case "3":
-			if id, ok, err := ss.askID("AppID: "); err != nil || !ok {
+			if id, ok, err := ss.askID("Game info", "AppID or Steam link: "); err != nil || !ok {
 				e = err
 			} else {
 				e = ss.info(id, true)
 			}
 		case "4":
-			e = ss.menuIDs("AppID(s) for .lua scripts: ", ss.lua)
+			e = ss.menuIDs("Lua script only", "AppIDs or Steam links: ", ss.lua)
 		case "5":
 			e = ss.menuFixes()
 		case "6":
 			e = ss.browseLists(1)
 		case "7":
-			if id, ok, err := ss.askID("AppID to request: "); err != nil || !ok {
+			if id, ok, err := ss.askID("Request a missing game", "AppID or Steam link: "); err != nil || !ok {
 				e = err
 			} else if e = ss.request(id); e == nil {
+				fmt.Fprintln(ss.out)
 				e = ss.requests()
 			}
 		case "8":
 			e = ss.usage()
 		case "9":
 			clearScreen(ss.out)
-			e = ss.showHistory("")
+			e = ss.showHistory("", 20)
 		case "r":
+			ss.screen("Refresh game list")
 			e = ss.refreshGameList()
 		case "c":
 			clearScreen(ss.out)
@@ -611,13 +615,14 @@ func (ss *session) menu() error {
 			return nil
 		case "":
 		default:
-			ss.ui.fail(ss.out, "invalid selection %q", strings.TrimSpace(choice))
+			e = fmt.Errorf("invalid selection %q", strings.TrimSpace(choice))
 		}
 		if errors.Is(e, io.EOF) || ss.ctx.Err() != nil {
 			return nil
 		}
 		if e != nil {
-			ss.ui.fail(ss.out, "%v", e)
+			fmt.Fprintln(ss.out)
+			ss.ui.fail(ss.out, "%s", capitalize(e.Error()))
 		}
 		// The next loop clears the screen, so let the user read the result first.
 		if ss.ui.shown {
@@ -637,9 +642,29 @@ func (ss *session) prompt(text string) (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
-// askID reads one AppID. ok is false when the user leaves it blank.
-func (ss *session) askID(text string) (string, bool, error) {
+// screen starts a new screen: it clears the terminal and prints a title.
+// A title alone is not a result, so the menu does not pause for it.
+func (ss *session) screen(title string) {
 	clearScreen(ss.out)
+	ss.ui.title(title)
+	fmt.Fprintln(ss.out)
+	ss.ui.shown = false
+}
+
+// ask prints a y/n question with a blank line before it, and a blank line
+// after a "yes" so the output that follows stands apart.
+func (ss *session) ask(question string) bool {
+	fmt.Fprintf(ss.out, "\n%s", ss.ui.bold(question+" (y/n): "))
+	if !ss.yes() {
+		return false
+	}
+	fmt.Fprintln(ss.out)
+	return true
+}
+
+// askID reads one AppID or Steam link. ok is false when the user leaves it blank.
+func (ss *session) askID(title, text string) (string, bool, error) {
+	ss.screen(title)
 	id, err := ss.prompt(text)
 	if err != nil || id == "" {
 		return "", false, err
@@ -647,11 +672,12 @@ func (ss *session) askID(text string) (string, bool, error) {
 	if id = appIDFrom(id); !validAppID(id) {
 		return "", false, fmt.Errorf("%q is not a Steam AppID", id)
 	}
+	fmt.Fprintln(ss.out)
 	return id, true, nil
 }
 
-func (ss *session) menuIDs(text string, fn func([]string) error) error {
-	clearScreen(ss.out)
+func (ss *session) menuIDs(title, text string, fn func([]string) error) error {
+	ss.screen(title)
 	line, err := ss.prompt(text)
 	if err != nil || line == "" {
 		return err
@@ -660,11 +686,12 @@ func (ss *session) menuIDs(text string, fn func([]string) error) error {
 	if err := checkIDs(ids); err != nil {
 		return err
 	}
+	fmt.Fprintln(ss.out)
 	return fn(ids)
 }
 
 func (ss *session) menuSearch() error {
-	clearScreen(ss.out)
+	ss.screen("Search games")
 	term, err := ss.prompt("Search term: ")
 	if err != nil || term == "" {
 		return err
@@ -679,13 +706,13 @@ func (ss *session) menuSearch() error {
 }
 
 func (ss *session) menuDownload() error {
-	return ss.menuIDs("AppID(s), separated by spaces or commas: ", func(ids []string) error {
+	return ss.menuIDs("Download by AppID", "AppIDs or Steam links, separated by spaces or commas: ", func(ids []string) error {
 		if len(ids) > 1 {
 			if _, ok := ss.s.(extendedService); ok {
-				fmt.Fprint(ss.out, "Pack them into one batch ZIP? (y/N): ")
-				if ss.yes() {
+				if ss.ask("Pack them into one batch ZIP?") {
 					return ss.downloadBatch(ids, false)
 				}
+				fmt.Fprintln(ss.out)
 			}
 		}
 		return ss.downloadIDs(ids, true)
@@ -693,7 +720,7 @@ func (ss *session) menuDownload() error {
 }
 
 func (ss *session) menuFixes() error {
-	clearScreen(ss.out)
+	ss.screen("Game fixes")
 	q, err := ss.prompt("Fix search (game name or AppID, Enter for all): ")
 	if err != nil {
 		return err
@@ -719,14 +746,11 @@ func (ss *session) search(req api.SearchRequest) error {
 		return err
 	}
 	clearScreen(ss.out)
-	if result.Approximate && len(result.Games) > 0 {
-		note := ""
-		if req.FilterDLC != "" || req.FilterProtection != "" || req.FilterAvailability {
-			note = " Filters do not apply to close matches."
-		}
-		ss.ui.warn("No name contains %q. These are close:%s", req.SearchTerm, note)
+	if result.Approximate && (req.FilterDLC != "" || req.FilterProtection != "" || req.FilterAvailability) {
+		ss.ui.warn("Filters do not apply to close matches.")
+		fmt.Fprintln(ss.out)
 	}
-	return ss.chooseGame(result)
+	return ss.chooseGame(result, req.SearchTerm)
 }
 
 func (ss *session) gameTags(g api.Game) string {
@@ -743,31 +767,46 @@ func (ss *session) gameTags(g api.Game) string {
 	return strings.Join(tags, " ")
 }
 
-func (ss *session) chooseGame(r api.SearchResponse) error {
+func (ss *session) chooseGame(r api.SearchResponse, term string) error {
 	if len(r.Games) == 0 {
-		ss.ui.warn("No games found.")
+		ss.ui.warn("No games found for %q.", term)
 		return nil
 	}
-	ss.ui.title(fmt.Sprintf("%d result(s)", len(r.Games)))
-	for i, g := range r.Games {
-		fmt.Fprintf(ss.out, "%3d. %s %s %s\n", i+1, pad(g.Name, 46), ss.ui.dim(pad(string(g.AppID), 9)), ss.gameTags(g))
+	heading := "Results for"
+	if r.Approximate {
+		heading = "Close matches for"
 	}
+	ss.ui.title(fmt.Sprintf("%s %q (%d)", heading, term, len(r.Games)))
+	if r.Approximate {
+		fmt.Fprintln(ss.out, ss.ui.dim("No game name contains this exact text, so these are the closest names."))
+		fmt.Fprintln(ss.out)
+	}
+	ss.gameRows(r.Games)
 	i, ok, err := ss.readSelection(len(r.Games), "game")
 	if err != nil || !ok {
 		return err
 	}
-	g := r.Games[i]
-	if x, ok := ss.s.(extendedService); ok && r.Approximate {
-		// Close matches come from the game list, which has only AppIDs and names.
-		if d, err := x.GameDetails(ss.ctx, string(g.AppID)); err == nil {
-			g = d.Game
+	return ss.openGame(r.Games[i], r.Approximate)
+}
+
+func (ss *session) gameRows(games []api.Game) {
+	for i, g := range games {
+		fmt.Fprintf(ss.out, "%3d. %s %s %s\n", i+1, pad(g.Name, 46), ss.ui.dim(pad(string(g.AppID), 9)), ss.gameTags(g))
+	}
+}
+
+// openGame shows one game with its image and offers to download it. When the
+// game came from a list with only AppIDs and names, it loads the full data first.
+func (ss *session) openGame(g api.Game, partial bool) error {
+	if x, ok := ss.s.(extendedService); ok && partial {
+		if full, err := x.Game(ss.ctx, string(g.AppID)); err == nil {
+			g = full
 		}
 	}
 	clearScreen(ss.out)
-	ss.renderImage(g.HeaderImageURL)
+	ss.renderImage(headerImage(g))
 	ss.printGameDetails(g)
-	fmt.Fprint(ss.out, "Download? (y/n): ")
-	if !ss.yes() {
+	if !ss.ask("Download?") {
 		return nil
 	}
 	return ss.downloadOne(string(g.AppID), g.Name, true)
@@ -822,8 +861,7 @@ func (ss *session) offerRequest(id string) error {
 	if _, ok := ss.s.(extendedService); !ok {
 		return nil
 	}
-	fmt.Fprint(ss.out, "Ask DepotBox staff to add it? (y/n): ")
-	if !ss.yes() {
+	if !ss.ask("Ask DepotBox staff to add it?") {
 		return nil
 	}
 	return ss.request(id)
@@ -846,9 +884,17 @@ func (ss *session) printGameDetails(g api.Game) {
 	ss.ui.field("DRM notice", optionalText(g.DRMNotice))
 	ss.ui.field("Account notice", optionalText(g.ExternalUserAccountNotice))
 	ss.ui.field("Store page", "https://store.steampowered.com/app/"+string(g.AppID))
-	if g.HeaderImageURL != "" {
-		ss.ui.field("Header image", g.HeaderImageURL)
+	if img := headerImage(g); img != "" {
+		ss.ui.field("Header image", img)
 	}
+}
+
+// headerImage is the game's header image, or the standard Steam address for it.
+func headerImage(g api.Game) string {
+	if g.HeaderImageURL != "" || g.AppID == "" {
+		return g.HeaderImageURL
+	}
+	return "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/" + string(g.AppID) + "/header.jpg"
 }
 
 func yesNo(value bool) string {
@@ -947,6 +993,16 @@ func (ss *session) info(id string, interactive bool) error {
 		return err
 	}
 	d, err := x.GameDetails(ss.ctx, id)
+	if err != nil && !api.IsNotFound(err) && ss.ctx.Err() == nil {
+		// The details call fails for some games; the search data and an
+		// availability check give the same screen, without the DLC list.
+		if g, gerr := x.Game(ss.ctx, id); gerr == nil {
+			d, err = api.GameDetails{Game: g}, nil
+			if av, aerr := x.Availability(ss.ctx, []string{id}); aerr == nil && len(av) == 1 {
+				d.Availability = map[string]bool{"depotbox": av[0].Available}
+			}
+		}
+	}
 	if api.IsNotFound(err) {
 		ss.ui.fail(ss.out, "AppID %s is not in the DepotBox catalog.", id)
 		if interactive {
@@ -959,7 +1015,7 @@ func (ss *session) info(id string, interactive bool) error {
 		return err
 	}
 	clearScreen(ss.out)
-	ss.renderImage(d.HeaderImageURL)
+	ss.renderImage(headerImage(d.Game))
 	ss.printGameDetails(d.Game)
 	if d.Available() {
 		ss.ui.field("Available", ss.ui.green("Yes"))
@@ -985,8 +1041,7 @@ func (ss *session) info(id string, interactive bool) error {
 	if !d.Available() {
 		return ss.offerRequest(id)
 	}
-	fmt.Fprint(ss.out, "Download? (y/n): ")
-	if !ss.yes() {
+	if !ss.ask("Download?") {
 		return nil
 	}
 	return ss.downloadOne(id, d.Name, true)
@@ -1029,7 +1084,7 @@ func (ss *session) chooseFix(r api.FixesResponse) error {
 		ss.ui.warn("No fixes found.")
 		return nil
 	}
-	ss.ui.title(fmt.Sprintf("%d fix(es)", len(r.Fixes)))
+	ss.ui.title(fmt.Sprintf("Game fixes (%s)", plural(len(r.Fixes), "fix", "fixes")))
 	for i, f := range r.Fixes {
 		fmt.Fprintf(ss.out, "%3d. %s %s %s\n", i+1, pad(f.Name, 40), ss.ui.yellow(pad(strings.Join(f.Tags, ","), 12)), ss.ui.dim(f.Size+"  "+f.File))
 	}
@@ -1039,8 +1094,11 @@ func (ss *session) chooseFix(r api.FixesResponse) error {
 	}
 	f := r.Fixes[i]
 	clearScreen(ss.out)
-	fmt.Fprintf(ss.out, "%s\nDownload? (y/n): ", ss.ui.bold(f.Name+" - "+f.File))
-	if !ss.yes() {
+	ss.ui.title(f.Name)
+	ss.ui.field("File", f.File)
+	ss.ui.field("Size", orDefault(f.Size, "unknown"))
+	ss.ui.field("Tags", orDefault(strings.Join(f.Tags, ", "), "none"))
+	if !ss.ask("Download?") {
 		return nil
 	}
 	act := ss.ui.start("Downloading " + f.File)
@@ -1077,10 +1135,12 @@ func (ss *session) browseLists(page int) error {
 			return nil
 		}
 		for i, l := range lp.Lists {
-			fmt.Fprintf(ss.out, "%3d. %s %s %s\n", i+1, pad(l.Name, 40), pad(fmt.Sprintf("%d games", l.DepotCount), 10), ss.ui.dim(fmt.Sprintf("%d likes  by %s", l.Likes, l.Creator)))
+			fmt.Fprintf(ss.out, "%3d. %s %s %s\n", i+1, pad(l.Name, 40), pad(plural(l.DepotCount, "game", "games"), 10), ss.ui.dim(pad(plural(l.Likes, "like", "likes"), 9)+" by "+l.Creator))
 		}
+		fmt.Fprintln(ss.out)
 		line, err := ss.prompt(fmt.Sprintf("Open a list (1-%d), n next, p previous, Enter to go back: ", len(lp.Lists)))
 		if err != nil || line == "" {
+			ss.ui.shown = false // the user chose to go back
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
@@ -1098,8 +1158,7 @@ func (ss *session) browseLists(page int) error {
 		default:
 			i, err := parseSelection([]string{line}, len(lp.Lists))
 			if err != nil {
-				ss.ui.fail(ss.out, "%v", err)
-				continue
+				continue // the page is drawn again
 			}
 			if err := ss.showList(lp.Lists[i].ID); err != nil {
 				return err
@@ -1119,25 +1178,40 @@ func (ss *session) showList(id string) error {
 	}
 	clearScreen(ss.out)
 	ss.ui.title(l.Name)
-	fmt.Fprintln(ss.out, ss.ui.dim(fmt.Sprintf("by %s, %d likes", l.Creator, l.Likes)))
+	fmt.Fprintln(ss.out, ss.ui.dim(fmt.Sprintf("by %s, %s", l.Creator, plural(l.Likes, "like", "likes"))))
 	if l.Description != "" {
 		fmt.Fprintln(ss.out, l.Description)
 	}
 	fmt.Fprintln(ss.out)
+	if len(l.Games) == 0 {
+		ss.ui.warn("This list has no games.")
+		return nil
+	}
+	ss.gameRows(l.Games)
 	ids := make([]string, 0, len(l.Games))
-	for i, g := range l.Games {
-		fmt.Fprintf(ss.out, "%3d. %s %s %s\n", i+1, pad(g.Name, 46), ss.ui.dim(pad(string(g.AppID), 9)), ss.gameTags(g))
+	for _, g := range l.Games {
 		ids = append(ids, string(g.AppID))
 	}
-	if len(ids) == 0 {
-		return nil
+	zips := plural((len(ids)+api.MaxBatch-1)/api.MaxBatch, "batch ZIP", "batch ZIPs")
+	fmt.Fprintln(ss.out)
+	line, err := ss.prompt(fmt.Sprintf("Select a game (1-%d), a to download all as %s, Enter to go back: ", len(ids), zips))
+	if err != nil || line == "" {
+		ss.ui.shown = false
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
 	}
-	zips := (len(ids) + api.MaxBatch - 1) / api.MaxBatch
-	fmt.Fprintf(ss.out, "Download all %d games as %d batch ZIP(s)? (y/n): ", len(ids), zips)
-	if !ss.yes() {
-		return nil
+	if strings.EqualFold(line, "a") {
+		fmt.Fprintln(ss.out)
+		return ss.downloadBatch(ids, false)
 	}
-	return ss.downloadBatch(ids, false)
+	i, err := parseSelection([]string{line}, len(l.Games))
+	if err != nil {
+		ss.ui.shown = false
+		return nil // back to the lists page
+	}
+	return ss.openGame(l.Games[i], false)
 }
 
 // --- requests and usage -----------------------------------------------------
@@ -1206,7 +1280,7 @@ func (ss *session) usage() error {
 	if ss.c.Plan == config.Pro {
 		limit = 120
 	}
-	ss.ui.title(fmt.Sprintf("Your API key (%s plan, %d requests a minute)", orDefault(string(ss.c.Plan), "unknown"), limit))
+	ss.ui.title(fmt.Sprintf("Your API key (%s plan, %d requests a minute)", capitalize(orDefault(string(ss.c.Plan), "unknown")), limit))
 	ss.ui.field("Last 24 hours", humanCount(u.Stats.Last24h))
 	ss.ui.field("Last 7 days", humanCount(u.Stats.Last7d))
 	ss.ui.field("Last 30 days", humanCount(u.Stats.Last30d))
@@ -1380,7 +1454,8 @@ func saveConfig(c config.Config) error {
 
 // --- history ----------------------------------------------------------------
 
-func (ss *session) showHistory(query string) error {
+// showHistory lists recent actions, newest first. limit 0 shows all.
+func (ss *session) showHistory(query string, limit int) error {
 	lister, ok := ss.s.(historyLister)
 	if !ok {
 		ss.ui.warn("History is unavailable.")
@@ -1390,13 +1465,23 @@ func (ss *session) showHistory(query string) error {
 	if err != nil {
 		return err
 	}
-	ss.ui.title("History")
-	count := 0
+	var match []history.Entry
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
-		if query != "" && !strings.Contains(strings.ToLower(e.Query+" "+e.Name+" "+e.AppID), strings.ToLower(query)) {
-			continue
+		if query == "" || strings.Contains(strings.ToLower(e.Query+" "+e.Name+" "+e.AppID), strings.ToLower(query)) {
+			match = append(match, e)
 		}
+	}
+	ss.ui.title("History")
+	if len(match) == 0 {
+		ss.ui.warn("No history yet.")
+		return nil
+	}
+	shown := match
+	if limit > 0 && len(match) > limit {
+		shown = match[:limit]
+	}
+	for _, e := range shown {
 		mark := ss.ui.green(ss.ui.sym("✓", "ok"))
 		switch e.Status {
 		case "failed":
@@ -1404,21 +1489,19 @@ func (ss *session) showHistory(query string) error {
 		case "exists":
 			mark = ss.ui.yellow(ss.ui.sym("•", "--"))
 		}
-		subject := strings.TrimSpace(e.Name + " " + e.Query)
-		fmt.Fprintf(ss.out, "%s %s  %-13s %-12s %s%s\n", mark, ss.ui.dim(e.At.Local().Format("2006-01-02 15:04")), e.Kind, e.AppID, subject, ss.ui.dim(historyPath(e.Path)))
-		count++
+		subject := e.Query
+		if e.Path != "" {
+			subject = filepath.Base(e.Path)
+		} else if e.Name != "" {
+			subject = e.Name
+		}
+		fmt.Fprintf(ss.out, "%s %s  %s %s %s\n", mark, ss.ui.dim(e.At.Local().Format("2006-01-02 15:04")), pad(e.Kind, 12), ss.ui.dim(pad(e.AppID, 9)), pad(subject, 60))
 	}
-	if count == 0 {
-		fmt.Fprintln(ss.out, "no history entries")
+	if len(shown) < len(match) {
+		fmt.Fprintln(ss.out)
+		fmt.Fprintln(ss.out, ss.ui.dim(fmt.Sprintf("Showing the latest %d of %d. Run dbox history to see all, or dbox history <term> to filter.", len(shown), len(match))))
 	}
 	return nil
-}
-
-func historyPath(path string) string {
-	if path == "" {
-		return ""
-	}
-	return " -> " + path
 }
 
 // --- terminal helpers -------------------------------------------------------
@@ -1478,6 +1561,7 @@ func splitIDs(text string) []string {
 
 // readSelection reads a 1-based choice. ok is false when the user leaves it blank.
 func (ss *session) readSelection(n int, what string) (int, bool, error) {
+	fmt.Fprintln(ss.out)
 	line, err := ss.prompt(fmt.Sprintf("Select a %s (1-%d, Enter to go back): ", what, n))
 	if line == "" {
 		ss.ui.shown = false // the user chose to go back

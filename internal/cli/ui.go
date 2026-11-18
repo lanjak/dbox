@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -135,6 +136,21 @@ func (u *ui) progress(n int64) {
 	}
 }
 
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// plural formats a count with the right noun: "1 game", "2 games".
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return humanCount(n) + " " + many
+}
+
 func humanBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
@@ -161,12 +177,43 @@ func humanCount(n int) string {
 	return s
 }
 
-// pad cuts or pads s to exactly w runes.
+// pad cuts or pads s to exactly w terminal columns.
 func pad(s string, w int) string {
-	n := utf8.RuneCountInString(s)
-	if n > w {
-		r := []rune(s)
-		return string(r[:w-3]) + "..."
+	n := width(s)
+	if n <= w {
+		return s + strings.Repeat(" ", w-n)
 	}
-	return s + strings.Repeat(" ", w-n)
+	var b strings.Builder
+	used := 0
+	for _, r := range s {
+		if used+runeWidth(r) > w-3 {
+			break
+		}
+		b.WriteRune(r)
+		used += runeWidth(r)
+	}
+	return b.String() + "..." + strings.Repeat(" ", w-3-used)
+}
+
+func width(s string) int {
+	n := 0
+	for _, r := range s {
+		n += runeWidth(r)
+	}
+	return n
+}
+
+// runeWidth is the number of terminal columns a character takes: 2 for
+// emoji and East Asian wide characters, 0 for combining marks.
+// shortcut: covers the common ranges, not every Unicode width rule.
+func runeWidth(r rune) int {
+	switch {
+	case unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) || r == 0x200B || r == 0x200D || (r >= 0xFE00 && r <= 0xFE0F):
+		return 0
+	case r >= 0x1100 && r <= 0x115F, r >= 0x2E80 && r <= 0xA4CF, r >= 0xAC00 && r <= 0xD7A3,
+		r >= 0xF900 && r <= 0xFAFF, r >= 0xFE30 && r <= 0xFE4F, r >= 0xFF00 && r <= 0xFF60,
+		r >= 0xFFE0 && r <= 0xFFE6, r >= 0x1F300 && r <= 0x1FAFF, r >= 0x20000 && r <= 0x3FFFD:
+		return 2
+	}
+	return 1
 }

@@ -127,3 +127,20 @@ func TestMenuPausesAfterResultsButNotAfterGoingBack(t *testing.T) {
 		t.Fatalf("menu not drawn on a cleared screen each time: %q", text)
 	}
 }
+
+func TestPadUsesTerminalColumns(t *testing.T) {
+	for in, want := range map[string]int{"abc": 10, "Project SEX 🔞": 10, "日本語のゲーム名前です": 10} {
+		if got := width(pad(in, want)); got != want {
+			t.Errorf("pad(%q) is %d columns, want %d", in, got, want)
+		}
+	}
+}
+
+func TestPluralAndHeaderImage(t *testing.T) {
+	if plural(1, "game", "games") != "1 game" || plural(1200, "game", "games") != "1,200 games" {
+		t.Fatal("plural")
+	}
+	if got := headerImage(api.Game{AppID: "70"}); got != "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/70/header.jpg" {
+		t.Fatal(got)
+	}
+}
